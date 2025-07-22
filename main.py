@@ -25,7 +25,7 @@ nest_asyncio.apply()
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.getenv("TOKEN")  # உங்கள் Bot Token வை இங்கே வைங்க
-admin_ids_str = os.getenv("ADMIN_IDS", "")
+admin_ids_str = os.getenv("ADMIN_IDS")
 admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
 PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")  # உங்க Channel invite link
 
@@ -33,11 +33,11 @@ user_files = {}
 
 # --- DB Connection Helper ---
 db_config = {
-    "host": os.getenv("DB_HOST", "127.0.0.1"),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),
-    "database": os.getenv("DB_NAME", ""),
-    "port": int(os.getenv("DB_PORT", 3306))
+    "host": os.getenv("DB_HOST"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_NAME"),
+    "port": int(os.getenv("DB_PORT"))
 }
 
 def get_db_connection():
