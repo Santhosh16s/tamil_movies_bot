@@ -1,1 +1,1 @@
-web: python3 SK_1.py
+web: python3 main.py
