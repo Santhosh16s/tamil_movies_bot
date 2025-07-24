@@ -48,6 +48,9 @@ PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+print(f"✅ Supabase URL: {SUPABASE_URL}")
+print(f"✅ Supabase KEY: {SUPABASE_KEY}")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 user_files = {}
