@@ -357,6 +357,26 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Status error: {e}")
         await update.message.reply_text("❌ Status info பெற முடியவில்லை.")
 
+async def movielist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        # Supabase லிருந்து movie list எடுக்குறது
+        result = supabase.table("movies").select("id", "title").execute()
+        movies = result.data
+
+        if not movies:
+            await update.message.reply_text("📭 எந்த movie-யும் database-ல் இல்ல.")
+            return
+
+        message = "🎬 Movie List:\n\n"
+        for movie in movies:
+            message += f"{movie['id']}. {movie['title']}\n"
+
+        await update.message.reply_text(message)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ பிழை வந்திருக்கு: {e}")
+        
+        
 # --- /adminpanel command ---
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -552,7 +572,7 @@ def main():
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("edittitle", edittitle))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
-    app.add_handler(CommandHandler("movies", movies_command))
+    app.add_handler(CommandHandler("movielist", movielist_command))
     app.add_handler(CommandHandler("restart", restart))
 
 
