@@ -5,9 +5,9 @@ import unicodedata
 import re
 import sys
 import os
-from fastapi import FastAPI
 import threading
 import uvicorn
+from fastapi import FastAPI
 from dotenv import load_dotenv
 from functools import wraps
 from supabase.client import create_client, Client
@@ -28,7 +28,7 @@ app = FastAPI()
 
 @app.get("/")
 def read_root():
-    return {"status": "ok"}
+    return {"status": "Bot is running"}
 
 # Start FastAPI server in background thread
 def run_health_check():
@@ -562,4 +562,5 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run("main:app", host="0.0.0.0", port=8080)
+    
