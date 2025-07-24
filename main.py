@@ -23,27 +23,16 @@ from telegram.ext import (
 )
 from rapidfuzz import process
 
-# main.py - create FastAPI app
-app = FastAPI()
 
-@app.get("/")
-def read_root():
-    return {"status": "Bot is running"}
-
-# Start FastAPI server in background thread
-def run_health_check():
-    uvicorn.run(app, host="0.0.0.0", port=8080)
-
-threading.Thread(target=run_health_check, daemon=True).start()
 
 load_dotenv()
 nest_asyncio.apply()
 logging.basicConfig(level=logging.INFO)
 
-TOKEN = os.getenv("TOKEN")
-admin_ids_str = os.getenv("ADMIN_IDS", "")
+TOKEN = os.getenv("TOKEN")  # உங்கள் Bot Token வை இங்கே வைங்க
+admin_ids_str = os.getenv("ADMIN_IDS","")
 admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
-PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
+PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")  # உங்க Channel invite link
 
 print("🚨 RAW ENV:", os.environ)  # Add this
 
@@ -100,13 +89,14 @@ def extract_title(filename):
     title = re.split(r"[-0-9]", filename)[0].strip()
     return title
 
-# --- Clean title ---
+# --- Clean title for DB storage ---
 def clean_title(title):
     cleaned = ''.join(c for c in title if unicodedata.category(c)[0] not in ['S', 'C'])
     cleaned = re.sub(r'[^\w\s\(\)]', '', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned
 
+# --- Save movie to DB ---
 # --- Save movie to Supabase ---
 def save_movie_to_db(title, poster_id, file_ids):
     try:
@@ -124,8 +114,8 @@ def save_movie_to_db(title, poster_id, file_ids):
     except Exception as e:
         logging.error(f"Supabase Insert error: {e}")
         return False
-
-# --- Time diff helper ---
+    
+# --- Calculate time difference for status ---
 def time_diff(past_time):
     now = datetime.utcnow()
     diff = now - past_time
@@ -328,55 +318,39 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ இந்த command admins மட்டுமே பயன்படுத்த முடியும்.")
         return
 
-    try:
-        response = supabase.table("movies").select("id", count="exact").execute()
-        total_movies = response.count or 0
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
 
-        response2 = supabase.rpc("get_movies_table_size").execute()  # Optional, or skip if no such RPC
-        db_size_mb = round(response2.data[0]['size_bytes'] / (1024*1024), 2) if response2.data else 0
+    cursor.execute("SELECT COUNT(*) AS total FROM movies")
+    total_movies = cursor.fetchone()['total']
 
-        last_movie_resp = supabase.table("movies").select("title", "uploaded_at").order("id", desc=True).limit(1).execute()
-        last = last_movie_resp.data[0] if last_movie_resp.data else None
-        if last:
-            last_title = last['title']
-            last_upload_time = datetime.fromisoformat(last['uploaded_at'])
-            time_ago = time_diff(last_upload_time)
-        else:
-            last_title = "None"
-            time_ago = "N/A"
+    cursor.execute("SHOW TABLE STATUS LIKE 'movies'")
+    status = cursor.fetchone()
+    size_in_bytes = status['Data_length'] + status.get('Index_length', 0)
+    db_size_mb = round(size_in_bytes / (1024 * 1024), 2)
 
-        text = (
-            f"📊 Bot Status:\n"
-            f"• Total Movies: {total_movies}\n"
-            f"• Database Size: {db_size_mb} MB\n"
-            f"• Last Upload: \"{last_title}\" – {time_ago}"
-        )
+    cursor.execute("SELECT title, uploaded_at FROM movies ORDER BY id DESC LIMIT 1")
+    last = cursor.fetchone()
+    if last:
+        last_title = last['title']
+        last_upload_time = last['uploaded_at']
+        time_ago = time_diff(last_upload_time)
+    else:
+        last_title = "None"
+        time_ago = "N/A"
 
-        await update.message.reply_text(text)
-    except Exception as e:
-        logging.error(f"Status error: {e}")
-        await update.message.reply_text("❌ Status info பெற முடியவில்லை.")
+    cursor.close()
+    db.close()
 
-async def movielist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        # Supabase லிருந்து movie list எடுக்குறது
-        result = supabase.table("movies").select("id", "title").execute()
-        movies = result.data
+    text = (
+        f"📊 Bot Status:\n"
+        f"• Total Movies: {total_movies}\n"
+        f"• Database Size: {db_size_mb} MB\n"
+        f"• Last Upload: \"{last_title}\" – {time_ago}"
+    )
 
-        if not movies:
-            await update.message.reply_text("📭 எந்த movie-யும் database-ல் இல்ல.")
-            return
+    await update.message.reply_text(text)
 
-        message = "🎬 Movie List:\n\n"
-        for movie in movies:
-            message += f"{movie['id']}. {movie['title']}\n"
-
-        await update.message.reply_text(message)
-
-    except Exception as e:
-        await update.message.reply_text(f"❌ பிழை வந்திருக்கு: {e}")
-        
-        
 # --- /adminpanel command ---
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -447,9 +421,13 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         supabase.table("movies").update({"title": new_title}).eq("title", old_title).execute()
-        global movies_data
-        movies_data = load_movies_data()
-        await update.message.reply_text(f"✅ *{old_title.title()}* இன் title, *{new_title.title()}* ஆக மாற்றப்பட்டது.", parse_mode="Markdown")
+
+        if supabase:
+            global movies_data
+            movies_data = load_movies_data()
+            await update.message.reply_text(f"✅ *{old_title.title()}* இன் title, *{new_title.title()}* ஆக மாற்றப்பட்டது.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("❌ அந்தப் படம் கிடைக்கலை. சரியான பழைய பெயர் கொடுக்கவும்.")
     except Exception as e:
         logging.error(f"Title update error: {e}")
         await update.message.reply_text("❌ Title update செய்ய முடியவில்லை.")
@@ -470,9 +448,13 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         supabase.table("movies").delete().eq("title", title).execute()
-        global movies_data
-        movies_data = load_movies_data()
-        await update.message.reply_text(f"✅ *{title.title()}* படத்தை delete பண்ணிட்டேன்.", parse_mode="Markdown")
+
+        if supabase:
+            global movies_data
+            movies_data = load_movies_data()
+            await update.message.reply_text(f"✅ *{title.title()}* படத்தை delete பண்ணிட்டேன்.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("❌ அந்தப் படம் கிடைக்கலை. சரியான பெயர் கொடுக்கவும்.")
     except Exception as e:
         logging.error(f"Delete error: {e}")
         await update.message.reply_text("❌ DB-இல் இருந்து delete பண்ண முடியலை.")
@@ -487,105 +469,116 @@ def load_movies_page(limit=20, offset=0):
     movies = response.data or []
     return [m['title'] for m in movies]
 
-# --- /movies command with pagination ---
-async def movies_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
-    page = int(args[0]) if args and args[0].isdigit() else 1
-    per_page = 10
-    total_movies = get_total_movies_count()
-    total_pages = (total_movies + per_page - 1) // per_page
-
-    if page < 1 or page > total_pages:
-        await update.message.reply_text(f"⚠️ Page number must be between 1 and {total_pages}.")
+# --- /movielist command ---
+async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id not in admin_ids:
+        await update.message.reply_text("❌ இந்த command admins மட்டுமே பயன்படுத்த முடியும்")
         return
 
-    offset = (page - 1) * per_page
-    movies_page = load_movies_page(limit=per_page, offset=offset)
+    page = 1
+    if context.args:
+        try:
+            page = int(context.args[0])
+            if page < 1:
+                page = 1
+        except ValueError:
+            page = 1
+
+    limit = 20
+    offset = (page - 1) * limit
+    movies = load_movies_page(limit=limit, offset=offset)
+    total_movies = get_total_movies_count()
+    total_pages = (total_movies + limit - 1) // limit
+
+    if not movies:
+        await update.message.reply_text("❌ இந்த பக்கத்தில் படம் இல்லை.")
+        return
+
+    text = f"🎬 Movies List - பக்கம் {page}/{total_pages}\n\n"
+    for i, title in enumerate(movies, start=offset + 1):
+        text += f"{i}. {title.title()}\n"
 
     keyboard = []
-    for movie_title in movies_page:
-        keyboard.append([InlineKeyboardButton(movie_title.title(), callback_data=f"movie_{movie_title.lower()}")])
-
-    nav_buttons = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Back", callback_data=f"page_{page-1}"))
+        keyboard.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"movielist_{page - 1}"))
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"page_{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
+        keyboard.append(InlineKeyboardButton("Next ➡️", callback_data=f"movielist_{page + 1}"))
 
-    await update.message.reply_text(
-        f"🎞️ Movies List (Page {page}/{total_pages}):",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
+    await update.message.reply_text(text, reply_markup=reply_markup)
 
-# --- Handle page navigation ---
-async def page_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- movielist pagination callback ---
+async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    data = query.data
 
-    page = int(query.data.split("_")[1])
-    per_page = 10
-    total_movies = get_total_movies_count()
-    total_pages = (total_movies + per_page - 1) // per_page
-
-    if page < 1 or page > total_pages:
-        await query.message.reply_text(f"⚠️ Page number must be between 1 and {total_pages}.")
+    if not data.startswith("movielist_"):
         return
 
-    offset = (page - 1) * per_page
-    movies_page = load_movies_page(limit=per_page, offset=offset)
+    page = int(data.split("_")[1])
+
+    limit = 20
+    offset = (page - 1) * limit
+    movies = load_movies_page(limit=limit, offset=offset)
+    total_movies = get_total_movies_count()
+    total_pages = (total_movies + limit - 1) // limit
+
+    if not movies:
+        await query.message.edit_text("❌ இந்த பக்கத்தில் படம் இல்லை.")
+        return
+
+    text = f"🎬 Movies List - பக்கம் {page}/{total_pages}\n\n"
+    for i, title in enumerate(movies, start=offset + 1):
+        text += f"{i}. {title.title()}\n"
 
     keyboard = []
-    for movie_title in movies_page:
-        keyboard.append([InlineKeyboardButton(movie_title.title(), callback_data=f"movie_{movie_title.lower()}")])
-
-    nav_buttons = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Back", callback_data=f"page_{page-1}"))
+        keyboard.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"movielist_{page - 1}"))
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"page_{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
+        keyboard.append(InlineKeyboardButton("Next ➡️", callback_data=f"movielist_{page + 1}"))
 
-    await query.edit_message_text(
-        text=f"🎞️ Movies List (Page {page}/{total_pages}):",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-# Restart command for admin only
-@restricted
-async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("♻️ Bot restarting...")
-    await context.bot.close()
+    reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
+    await query.message.edit_text(text, reply_markup=reply_markup)
+
+# --- /restart command ---
+async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in admin_ids:
+        return
+
+    await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Koyeb மூலம்)...")
     sys.exit(0)
 
-# --- Main ---
-def main():
+# --- Main function to setup bot ---
+async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Command handlers
+    # Register commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addmovie", addmovie))
+    app.add_handler(CommandHandler("deletemovie", deletemovie))
+    app.add_handler(CommandHandler("edittitle", edittitle))
+    app.add_handler(CommandHandler("movielist", movielist))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("adminpanel", admin_panel))
     app.add_handler(CommandHandler("addadmin", add_admin))
     app.add_handler(CommandHandler("removeadmin", remove_admin))
-    app.add_handler(CommandHandler("edittitle", edittitle))
-    app.add_handler(CommandHandler("deletemovie", deletemovie))
-    app.add_handler(CommandHandler("movielist", movielist_command))
-    app.add_handler(CommandHandler("restart", restart))
+    app.add_handler(CommandHandler("restart", restart_bot))
 
+    # File upload handler
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
 
-    # Message handler for files & text
-    app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, save_file))
+    # Movie search text handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
-    # CallbackQuery handlers
+    # Callback handlers
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res_"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie_"))
-    app.add_handler(CallbackQueryHandler(page_navigation, pattern=r"^page_"))
+    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
 
-    app.run_polling()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
