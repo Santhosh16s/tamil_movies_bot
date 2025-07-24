@@ -318,38 +318,34 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ இந்த command admins மட்டுமே பயன்படுத்த முடியும்.")
         return
 
-    db = get_db_connection()
-    cursor = db.cursor(dictionary=True)
+    try:
+        response = supabase.table("movies").select("id", count="exact").execute()
+        total_movies = response.count or 0
 
-    cursor.execute("SELECT COUNT(*) AS total FROM movies")
-    total_movies = cursor.fetchone()['total']
+        response2 = supabase.rpc("get_movies_table_size").execute()  # Optional, or skip if no such RPC
+        db_size_mb = round(response2.data[0]['size_bytes'] / (1024*1024), 2) if response2.data else 0
 
-    cursor.execute("SHOW TABLE STATUS LIKE 'movies'")
-    status = cursor.fetchone()
-    size_in_bytes = status['Data_length'] + status.get('Index_length', 0)
-    db_size_mb = round(size_in_bytes / (1024 * 1024), 2)
+        last_movie_resp = supabase.table("movies").select("title", "uploaded_at").order("id", desc=True).limit(1).execute()
+        last = last_movie_resp.data[0] if last_movie_resp.data else None
+        if last:
+            last_title = last['title']
+            last_upload_time = datetime.fromisoformat(last['uploaded_at'])
+            time_ago = time_diff(last_upload_time)
+        else:
+            last_title = "None"
+            time_ago = "N/A"
 
-    cursor.execute("SELECT title, uploaded_at FROM movies ORDER BY id DESC LIMIT 1")
-    last = cursor.fetchone()
-    if last:
-        last_title = last['title']
-        last_upload_time = last['uploaded_at']
-        time_ago = time_diff(last_upload_time)
-    else:
-        last_title = "None"
-        time_ago = "N/A"
+        text = (
+            f"📊 Bot Status:\n"
+            f"• Total Movies: {total_movies}\n"
+            f"• Database Size: {db_size_mb} MB\n"
+            f"• Last Upload: \"{last_title}\" – {time_ago}"
+        )
 
-    cursor.close()
-    db.close()
-
-    text = (
-        f"📊 Bot Status:\n"
-        f"• Total Movies: {total_movies}\n"
-        f"• Database Size: {db_size_mb} MB\n"
-        f"• Last Upload: \"{last_title}\" – {time_ago}"
-    )
-
-    await update.message.reply_text(text)
+        await update.message.reply_text(text)
+    except Exception as e:
+        logging.error(f"Status error: {e}")
+        await update.message.reply_text("❌ Status info பெற முடியவில்லை.")
 
 # --- /adminpanel command ---
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
