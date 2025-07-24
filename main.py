@@ -5,6 +5,9 @@ import unicodedata
 import re
 import sys
 import os
+from fastapi import FastAPI
+import threading
+import uvicorn
 from dotenv import load_dotenv
 from functools import wraps
 from supabase.client import create_client, Client
@@ -19,6 +22,19 @@ from telegram.ext import (
     ContextTypes,
 )
 from rapidfuzz import process
+
+# main.py - create FastAPI app
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"status": "ok"}
+
+# Start FastAPI server in background thread
+def run_health_check():
+    uvicorn.run(app, host="0.0.0.0", port=8080)
+
+threading.Thread(target=run_health_check, daemon=True).start()
 
 load_dotenv()
 nest_asyncio.apply()
