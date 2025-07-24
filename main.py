@@ -566,7 +566,3 @@ def main():
     app.add_handler(CallbackQueryHandler(page_navigation, pattern=r"^page_"))
 
     app.run_polling()
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8080)
-    
