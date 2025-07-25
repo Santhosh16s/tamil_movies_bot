@@ -495,7 +495,7 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             page = 1
 
-    limit = 20
+    limit = 30
     offset = (page - 1) * limit
 
     movies = load_movies_page(limit=limit, offset=offset)
@@ -533,7 +533,7 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     page = int(data.split("_")[1])
 
-    limit = 20
+    limit = 30
     offset = (page - 1) * limit
     movies = load_movies_page(limit=limit, offset=offset)
     total_movies = get_total_movies_count()
