@@ -13,19 +13,17 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler, # இது சரியாக இறக்குமதி செய்யப்பட்டுள்ளது
+    CallbackQueryHandler,
     filters,
     ContextTypes,
 )
 from rapidfuzz import process
 from dotenv import load_dotenv
 
-# .env கோப்பிலிருந்து environment variables ஐ ஏற்றவும்
 load_dotenv()
 nest_asyncio.apply()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Environment variables ஐப் பெறவும்
 TOKEN = os.getenv("TOKEN")
 admin_ids_str = os.getenv("ADMIN_IDS", "")
 admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
@@ -34,7 +32,6 @@ PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Supabase client ஐ உருவாக்கவும்
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     logging.info(f"✅ Supabase URL: {SUPABASE_URL}")
@@ -43,14 +40,10 @@ except Exception as e:
     logging.error(f"❌ Supabase client உருவாக்க முடியவில்லை: {e}")
     sys.exit(1)
 
-# Global variable for user files (for addmovie process)
 user_files = {}
 
-# --- Utility Functions (defined BEFORE they are called globally) ---
-
-# --- Extract title from filename ---
+# --- Utility Functions ---
 def extract_title(filename: str) -> str:
-    """ஃபைல் பெயரிலிருந்து திரைப்படத் தலைப்பைப் பிரித்தெடுக்கிறது."""
     filename = re.sub(r"@\S+", "", filename)
     filename = re.sub(r"\b(480p|720p|1080p|x264|x265|HEVC|HDRip|WEBRip|AAC|10bit|DS4K|UNTOUCHED|mkv|mp4|HD|HQ|Tamil|Telugu|Hindi|English|Dubbed|Org|Original|Proper)\b", "", filename, flags=re.IGNORECASE)
     filename = re.sub(r"[\[\]\(\)\{\}]", " ", filename)
@@ -64,21 +57,14 @@ def extract_title(filename: str) -> str:
     title = re.split(r"[-0-9]", filename)[0].strip()
     return title
 
-# --- Clean title for DB storage and comparison ---
 def clean_title(title: str) -> str:
-    """
-    திரைப்படத் தலைப்பை சுத்தம் செய்து, lowercase ஆக மாற்றுகிறது.
-    இது சேமிக்கும்போதும், தேடும்போதும், நீக்கும்போதும் ஒரே மாதிரியான தலைப்பை உறுதி செய்கிறது.
-    """
     cleaned = title.lower()
     cleaned = ''.join(c for c in cleaned if unicodedata.category(c)[0] not in ['S', 'C'])
     cleaned = re.sub(r'[^\w\s\(\)]', '', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned
 
-# --- Load movies from Supabase (now clean_title is defined) ---
 def load_movies_data():
-    """Supabase இலிருந்து திரைப்படத் தரவைப் பதிவேற்றுகிறது."""
     try:
         response = supabase.table("movies").select("*").execute()
         movies = response.data or []
@@ -99,10 +85,9 @@ def load_movies_data():
         logging.error(f"❌ Supabase இலிருந்து திரைப்படத் தரவைப் பதிவேற்ற முடியவில்லை: {e}")
         return {}
 
-# movies_data ஐ global ஆக ஏற்றவும் (இப்போது clean_title வரையறுக்கப்பட்டுள்ளது)
 movies_data = load_movies_data()
 
-# --- Decorator for restricted commands ---
+# --- Decorator ---
 def restricted(func):
     @wraps(func)
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
@@ -115,7 +100,6 @@ def restricted(func):
 
 # --- Save movie to Supabase ---
 def save_movie_to_db(title: str, poster_id: str, file_ids: list) -> bool:
-    """திரைப்படத் தரவை Supabase டேட்டாபேஸில் சேமிக்கிறது."""
     try:
         cleaned_title_for_db = clean_title(title)
         logging.info(f"Saving movie with cleaned title: '{cleaned_title_for_db}'")
@@ -140,9 +124,8 @@ def save_movie_to_db(title: str, poster_id: str, file_ids: list) -> bool:
         logging.error(f"❌ Supabase Insert பிழை: {e}")
         return False
     
-# --- Calculate time difference for status ---
+# --- Time difference for status ---
 def time_diff(past_time: datetime) -> str:
-    """கடந்த நேரத்திற்கும் இப்போதைய நேரத்திற்கும் உள்ள வித்தியாசத்தைக் கணக்கிடுகிறது."""
     now = datetime.utcnow()
     diff = now - past_time
 
@@ -162,7 +145,6 @@ def time_diff(past_time: datetime) -> str:
 
 # --- Delete messages after 10 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    """ஒரு குறிப்பிட்ட காலத்திற்குப் பிறகு Telegram மெசேஜை நீக்குகிறது."""
     await asyncio.sleep(600)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -172,7 +154,6 @@ async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, m
 
 # --- Send movie poster with resolution buttons ---
 async def send_movie_poster(message: Message, movie_name_key: str, context: ContextTypes.DEFAULT_TYPE):
-    """திரைப்பட போஸ்டரை ரெசல்யூஷன் பட்டன்களுடன் அனுப்புகிறது."""
     movie = movies_data.get(movie_name_key)
     if not movie:
         await message.reply_text("❌ படம் கிடைக்கவில்லை அல்லது போஸ்டர் இல்லை.")
@@ -183,11 +164,26 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
         f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!"
     )
 
+    # callback_data இல் உள்ள '_' சிக்கலைத் தவிர்க்க, மூவி பெயரை Base64 போன்ற குறியீட்டில் மாற்றலாம்,
+    # ஆனால் தற்போதைக்கு, மூவி பெயரில் '_' இருக்கும்பட்சத்தில் அதை ஒரு தனி கேரக்டரால் (எ.கா., `|`) மாற்றுவோம்.
+    # பின்னர் அதை `split()` செய்யும் போது பிரித்தெடுப்போம்.
+
+    # Option 1: Replace spaces with a special character for callback_data, then revert
+    # This might still cause issues if the movie title itself contains this special char.
+    # A more robust approach involves base64 encoding/decoding but for simplicity...
+
+    # Let's try to pass the clean_title directly. The issue is in splitting it back.
+    # The clean_title ensures no special chars except spaces, and then spaces become '_'.
+    # If the clean_title itself contains '_', then `split('_')` becomes problematic.
+    # The solution is to split only on the *first* underscore, or use a different delimiter.
+
+    # For resolution buttons, we'll prefix with 'res|' and then use '|' as delimiter.
+    # This ensures movie name with underscores is handled correctly.
     keyboard = [
         [
-            InlineKeyboardButton("480p", callback_data=f"res_{movie_name_key}_480p"),
-            InlineKeyboardButton("720p", callback_data=f"res_{movie_name_key}_720p"),
-            InlineKeyboardButton("1080p", callback_data=f"res_{movie_name_key}_1080p"),
+            InlineKeyboardButton("480p", callback_data=f"res|{movie_name_key}|480p"),
+            InlineKeyboardButton("720p", callback_data=f"res|{movie_name_key}|720p"),
+            InlineKeyboardButton("1080p", callback_data=f"res|{movie_name_key}|1080p"),
         ]
     ]
 
@@ -205,20 +201,17 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
 
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/start கட்டளைக்கு பதிலளிக்கிறது."""
     await update.message.reply_text("🎬 தயவுசெய்து திரைப்படத்தின் பெயரை அனுப்புங்கள்!")
 
 # --- /addmovie command ---
 @restricted
 async def addmovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """புதிய திரைப்படத்தைச் சேர்க்கும் செயல்முறையைத் தொடங்குகிறது."""
     user_id = update.message.from_user.id
     user_files[user_id] = {"poster": None, "movies": []}
     await update.message.reply_text("போஸ்டர் மற்றும் 3 movie files (480p, 720p, 1080p) அனுப்பவும்.")
 
 # --- Save incoming files (for addmovie process) ---
 async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """போஸ்டர் மற்றும் மூவி ஃபைல்களைப் பெற்று Supabase-ல் சேமிக்கிறது."""
     message = update.message
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -227,7 +220,6 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("❗ முதலில் /addmovie அனுப்பவும்.")
         return
 
-    # Poster
     if message.photo:
         file_id = message.photo[-1].file_id
         user_files[user_id]["poster"] = file_id
@@ -235,7 +227,6 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
         return
 
-    # Movie files (Telegram file_id-யைப் பயன்படுத்தவும்)
     if message.document:
         if len(user_files[user_id]["movies"]) >= 3:
             await message.reply_text("❗ மூன்று movie files ஏற்கனவே பெற்றுவிட்டேன்.")
@@ -255,7 +246,6 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
 
-    # If all files received, save to DB
     if user_files[user_id]["poster"] and len(user_files[user_id]["movies"]) == 3:
         poster_id = user_files[user_id]["poster"]
         movies_list = user_files[user_id]["movies"]
@@ -277,7 +267,6 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Send movie on text message (search) ---
 async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """பயனரின் தேடல் வினவலுக்குப் பதிலளிக்கிறது."""
     search_query = update.message.text.strip()
 
     global movies_data
@@ -299,7 +288,8 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=60)
         if suggestions:
-            keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie_{m[0]}")] for m in suggestions]
+            # For movie suggestions, we'll prefix with 'movie|' and use '|' as delimiter.
+            keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in suggestions]
             await update.message.reply_text(
                 "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
@@ -307,14 +297,15 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ படம் கிடைக்கவில்லை!")
 
-
 # --- Handle resolution button clicks ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ரெசல்யூஷன் பட்டன் கிளிக்குகளைக் கையாளுகிறது மற்றும் திரைப்பட ஃபைலை அனுப்புகிறது."""
     query = update.callback_query
     await query.answer()
     try:
-        _, movie_name_key, res = query.data.split("_")
+        # Changed split delimiter from '_' to '|' and maxsplit to 2
+        # Example: 'res|movie_name_with_underscores|480p'
+        _, movie_name_key, res = query.data.split("|", 2) 
+        
         movie = movies_data.get(movie_name_key)
         if not movie:
             return await query.message.reply_text("❌ படம் கிடைக்கவில்லை!")
@@ -343,20 +334,20 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
         logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
         await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
 
-
 # --- Handle movie button click from suggestions ---
 async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """பரிந்துரைக்கப்பட்ட திரைப்படப் பட்டன் கிளிக்குகளைக் கையாளுகிறது."""
     query = update.callback_query
     await query.answer()
-    data_parts = query.data.split("_")
+    data = query.data
     
-    if len(data_parts) < 2:
+    # Changed split delimiter from '_' to '|' and maxsplit to 1
+    # Example: 'movie|movie_name_with_underscores'
+    if "|" not in data:
         await query.message.reply_text("தவறான கோரிக்கை.")
         return
 
-    movie_name_key = "_".join(data_parts[1:])
-    
+    prefix, movie_name_key = data.split("|", 1) # Split only once
+
     if movie_name_key in movies_data:
         await send_movie_poster(query.message, movie_name_key, context)
     else:
@@ -365,7 +356,6 @@ async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # --- /status command ---
 @restricted
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """பாட்டின் நிலை மற்றும் டேட்டாபேஸ் தகவல்களைக் காட்டுகிறது."""
     try:
         response = supabase.table("movies").select("id", count="exact").execute()
         total_movies = response.count or 0
@@ -397,14 +387,12 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /adminpanel command ---
 @restricted
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """அட்மின் பேனல் தகவல்களைக் காட்டுகிறது."""
     admin_list = "\n".join([f"👤 {admin_id}" for admin_id in admin_ids])
     await update.message.reply_text(f"🛠️ *Admin Panel*\n\n📋 *Admin IDs:*\n{admin_list}", parse_mode='Markdown')
 
 # --- /addadmin <id> command ---
 @restricted
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """புதிய அட்மினைச் சேர்க்கிறது."""
     if not context.args:
         await update.message.reply_text("⚠️ Usage: /addadmin <user_id>")
         return
@@ -422,7 +410,6 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /removeadmin <id> command ---
 @restricted
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """அட்மினை நீக்குகிறது."""
     if not context.args:
         await update.message.reply_text("⚠️ Usage: /removeadmin <user_id>")
         return
@@ -443,7 +430,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /edittitle command ---
 @restricted
 async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """திரைப்படத் தலைப்பை மாற்றுகிறது."""
     args = context.args
     logging.info(f"Edittitle args: {args}")
     if len(args) < 1 or "|" not in " ".join(args):
@@ -474,7 +460,6 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /deletemovie command ---
 @restricted
 async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """திரைப்படத்தை டேட்டாபேஸில் இருந்து நீக்குகிறது."""
     args = context.args
     if not args:
         await update.message.reply_text("⚠️ Usage: `/deletemovie <movie name>`", parse_mode="Markdown")
@@ -500,7 +485,6 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Pagination helpers ---
 def get_total_movies_count() -> int:
-    """டேட்டாபேஸில் உள்ள மொத்த திரைப்படங்களின் எண்ணிக்கையைப் பெறுகிறது."""
     try:
         response = supabase.table("movies").select("id", count="exact").execute()
         return response.count if response.count is not None else 0
@@ -509,7 +493,6 @@ def get_total_movies_count() -> int:
         return 0
 
 def load_movies_page(limit: int = 20, offset: int = 0) -> list:
-    """டேட்டாபேஸில் இருந்து திரைப்படப் பட்டியலின் ஒரு பக்கத்தைப் பதிவேற்றுகிறது."""
     try:
         response = supabase.table("movies").select("title").order("title", desc=False).range(offset, offset + limit - 1).execute()
         movies = response.data or []
@@ -521,7 +504,6 @@ def load_movies_page(limit: int = 20, offset: int = 0) -> list:
 # --- /movielist command ---
 @restricted
 async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """திரைப்படப் பட்டியலைக் காட்டுகிறது."""
     user_id = update.message.from_user.id
     logging.info(f"User {user_id} requested /movielist command.") 
 
@@ -562,7 +544,6 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # movielist pagination callback
 async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """திரைப்படப் பட்டியல் பக்கவாட்டு கிளிக்குகளைக் கையாளுகிறது."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -598,16 +579,13 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # --- /restart command ---
 @restricted
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """பாட்டை மறுதொடக்கம் செய்கிறது."""
     await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Koyeb மூலம்)...")
     sys.exit(0)
 
 # --- Main function to setup bot ---
 async def main():
-    """பாட்டைத் தொடங்கி, அனைத்து ஹேண்ட்லர்களையும் பதிவு செய்கிறது."""
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # கட்டளைகளைப் பதிவு செய்யவும்
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
@@ -619,20 +597,16 @@ async def main():
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
 
-    # ஃபைல் பதிவேற்ற ஹேண்ட்லர்
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
-
-    # திரைப்படத் தேடல் டெக்ஸ்ட் ஹேண்ட்லர் (கட்டளைகள் தவிர்த்து)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
-    # Callback ஹேண்ட்லர்கள்
-    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res_"))
-    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie_")) # CallbackQueryHandler ஐப் பயன்படுத்தவும்
-    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
+    # Callback handlers (now using '|' as delimiter)
+    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
+    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
+    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_")) # No change here, movielist callback uses page number
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
