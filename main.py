@@ -166,7 +166,7 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
         return
 
-    # Movie files
+    # Movie files (இந்த பகுதிதான் மாற்றப்பட்டது)
     if message.document:
         if len(user_files[user_id]["movies"]) >= 3:
             await message.reply_text("❗ மூன்று movie files ஏற்கனவே பெற்றுவிட்டேன்.")
@@ -175,28 +175,53 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movie_file_id = message.document.file_id
         movie_file_name = message.document.file_name
 
-        user_files[user_id]["movies"].append({
-            "file_id": movie_file_id,
-            "file_name": movie_file_name
-        })
+        try:
+            # Telegram-ல் இருந்து ஃபைலைப் பெறவும்
+            file_obj = await context.bot.get_file(movie_file_id)
+            
+            # ஃபைல் உள்ளடக்கத்தைப் பதிவிறக்கவும்
+            file_content = await file_obj.download_as_bytes()
 
-        await message.reply_text(
-            f"🎥 Movie file {len(user_files[user_id]['movies'])} received.\n📂 `{movie_file_name}`",
-            parse_mode="Markdown"
-        )
-        asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
+            # Supabase Storage-ல் பதிவேற்றுவதற்கான path-ஐ உருவாக்கவும் (உங்கள் தேவைக்கேற்ப மாற்றலாம்)
+            # 'movies' என்பது ஒரு subfolder ஆக செயல்படும். ஃபைல் பெயர் தனித்துவமானது என்பதை உறுதிப்படுத்தவும்.
+            storage_path = f"movies/{movie_file_name}" 
+
+            # Supabase Storage-ல் ஃபைலை பதிவேற்றவும்
+            # 'movie-files' என்பதை உங்கள் பக்கெட் பெயராக மாற்றவும்!
+            response = supabase.storage.from_('movie-files').upload(storage_path, file_content, {"content-type": message.document.mime_type})
+            
+            # பதிவேற்றிய ஃபைலின் பொதுவான URL-ஐப் பெறவும்
+            file_url = supabase.storage.from_('movie-files').get_public_url(storage_path)
+
+            user_files[user_id]["movies"].append({
+                "file_id": file_url, # இனி Telegram file_id-க்கு பதிலாக பொதுவான URL சேமிக்கப்படும்
+                "file_name": movie_file_name
+            })
+
+            await message.reply_text(
+                f"🎥 Movie file {len(user_files[user_id]['movies'])} received and uploaded.\n📂 `{movie_file_name}`",
+                parse_mode="Markdown"
+            )
+            asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
+
+        except Exception as e:
+            logging.error(f"Supabase Storage upload error: {e}")
+            await message.reply_text("❌ கோப்பு Supabase Storage-க்கு பதிவேற்ற முடியவில்லை.")
+            return
 
     # If all files received, save to DB
     if user_files[user_id]["poster"] and len(user_files[user_id]["movies"]) == 3:
         poster_id = user_files[user_id]["poster"]
         movies = user_files[user_id]["movies"]
-        file_ids = [m["file_id"] for m in movies]
+        file_ids = [m["file_id"] for m in movies] # இது இப்போது URL-கள்
+        
+        # ensure title extraction is based on the first movie file received
         title = extract_title(movies[0]["file_name"]).lower()
         title = clean_title(title)
 
         saved = save_movie_to_db(title, poster_id, file_ids)
         if saved:
-            global movies_data
+            global movies_data # இந்த வரி சரியான இடத்தில் இருக்க வேண்டும்
             movies_data = load_movies_data()
             await message.reply_text(f"✅ Movie saved as *{title.title()}*.", parse_mode="Markdown")
         else:
