@@ -267,35 +267,45 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Send movie on text message (search) ---
 async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """பயனரின் தேடல் வினவலுக்குப் பதிலளிக்கிறது."""
     search_query = update.message.text.strip()
 
     global movies_data
-    movies_data = load_movies_data()
+    movies_data = load_movies_data() # சமீபத்திய தரவை ஏற்றவும்
 
     if not movies_data:
         await update.message.reply_text("டேட்டாபேஸ் காலியாக உள்ளது அல்லது ஏற்ற முடியவில்லை. பின்னர் முயற்சிக்கவும்.")
         return
 
     cleaned_search_query = clean_title(search_query)
-
     movie_titles = list(movies_data.keys())
-    best_match = process.extractOne(cleaned_search_query, movie_titles, score_cutoff=80)
 
-    if best_match:
-        matched_title_key = best_match[0]
-        logging.info(f"Retrieved movie title from DB for search: '{matched_title_key}'")
-        await send_movie_poster(update.message, matched_title_key, context)
-    else:
-        suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=60)
-        if suggestions:
-            # For movie suggestions, we'll prefix with 'movie|' and use '|' as delimiter.
-            keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in suggestions]
+    # ஒரு குறிப்பிட்ட score_cutoff (எ.கா., 80) உடன் பொருந்தும் அனைத்து நல்ல பொருத்தங்களையும் பெறவும்
+    # இது 'amaran' மற்றும் 'amaranad' இரண்டையும் 'amara' தேடலுக்குக் கண்டறியும்
+    good_matches = process.extract(cleaned_search_query, movie_titles, score_cutoff=80)
+
+    if not good_matches:
+        # எந்த நல்ல பொருத்தமும் இல்லை என்றால், குறைந்த score_cutoff (எ.கா., 60) உடன் பரந்த பரிந்துரைகளை முயற்சிக்கவும்
+        broad_suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=60)
+        if broad_suggestions:
+            keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in broad_suggestions]
             await update.message.reply_text(
                 "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
             await update.message.reply_text("❌ படம் கிடைக்கவில்லை!")
+    elif len(good_matches) == 1 and good_matches[0][1] >= 95: # ஒரே ஒரு மிகத் துல்லியமான பொருத்தம் (95% அல்லது அதற்கு மேல்)
+        matched_title_key = good_matches[0][0]
+        logging.info(f"Direct exact match found for search: '{matched_title_key}'")
+        await send_movie_poster(update.message, matched_title_key, context)
+    else: # பல நல்ல பொருத்தங்கள் அல்லது ஒரே ஒரு பொருத்தம் போதுமான அளவு துல்லியமாக இல்லை (95% க்கும் குறைவு)
+        # அனைத்து நல்ல பொருத்தங்களையும் பரிந்துரைகளாகக் காட்டவும்
+        keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in good_matches]
+        await update.message.reply_text(
+            "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 # --- Handle resolution button clicks ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
