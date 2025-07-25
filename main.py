@@ -99,6 +99,7 @@ def clean_title(title):
 # --- Save movie to DB ---
 def save_movie_to_db(title, poster_id, file_ids):
     try:
+        logging.info(f"Saving movie with title: '{title}'")  
         data = {
             "title": title,
             "poster_url": poster_id,
