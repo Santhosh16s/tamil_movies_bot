@@ -8,17 +8,17 @@ import os
 from functools import wraps
 from supabase.client import create_client, Client
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message # Message ஐ சேர்த்தேன்
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
+    CallbackQueryHandler, # இது சரியாக இறக்குமதி செய்யப்பட்டுள்ளது
     filters,
     ContextTypes,
 )
 from rapidfuzz import process
-from dotenv import load_dotenv # dotenv ஐ இங்கே import செய்யவும்
+from dotenv import load_dotenv
 
 # .env கோப்பிலிருந்து environment variables ஐ ஏற்றவும்
 load_dotenv()
@@ -26,10 +26,10 @@ nest_asyncio.apply()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Environment variables ஐப் பெறவும்
-TOKEN = os.getenv("TOKEN")  # உங்கள் Bot Token
+TOKEN = os.getenv("TOKEN")
 admin_ids_str = os.getenv("ADMIN_IDS", "")
 admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
-PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")  # உங்கள் Channel invite link
+PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -38,13 +38,69 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     logging.info(f"✅ Supabase URL: {SUPABASE_URL}")
-    logging.info(f"✅ Supabase KEY: {SUPABASE_KEY[:5]}...") # முழு key ஐ காண்பிக்க வேண்டாம்
+    logging.info(f"✅ Supabase KEY: {SUPABASE_KEY[:5]}...")
 except Exception as e:
     logging.error(f"❌ Supabase client உருவாக்க முடியவில்லை: {e}")
-    sys.exit(1) # Supabase இல்லாமல் பாட் இயங்க முடியாது
+    sys.exit(1)
 
 # Global variable for user files (for addmovie process)
 user_files = {}
+
+# --- Utility Functions (defined BEFORE they are called globally) ---
+
+# --- Extract title from filename ---
+def extract_title(filename: str) -> str:
+    """ஃபைல் பெயரிலிருந்து திரைப்படத் தலைப்பைப் பிரித்தெடுக்கிறது."""
+    filename = re.sub(r"@\S+", "", filename)
+    filename = re.sub(r"\b(480p|720p|1080p|x264|x265|HEVC|HDRip|WEBRip|AAC|10bit|DS4K|UNTOUCHED|mkv|mp4|HD|HQ|Tamil|Telugu|Hindi|English|Dubbed|Org|Original|Proper)\b", "", filename, flags=re.IGNORECASE)
+    filename = re.sub(r"[\[\]\(\)\{\}]", " ", filename)
+    filename = re.sub(r"\s+", " ", filename).strip()
+
+    match = re.search(r"([a-zA-Z\s]+)(?:\(?)(20\d{2})(?:\)?)", filename)
+    if match:
+        title = f"{match.group(1).strip()} ({match.group(2)})"
+        return title
+
+    title = re.split(r"[-0-9]", filename)[0].strip()
+    return title
+
+# --- Clean title for DB storage and comparison ---
+def clean_title(title: str) -> str:
+    """
+    திரைப்படத் தலைப்பை சுத்தம் செய்து, lowercase ஆக மாற்றுகிறது.
+    இது சேமிக்கும்போதும், தேடும்போதும், நீக்கும்போதும் ஒரே மாதிரியான தலைப்பை உறுதி செய்கிறது.
+    """
+    cleaned = title.lower()
+    cleaned = ''.join(c for c in cleaned if unicodedata.category(c)[0] not in ['S', 'C'])
+    cleaned = re.sub(r'[^\w\s\(\)]', '', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
+
+# --- Load movies from Supabase (now clean_title is defined) ---
+def load_movies_data():
+    """Supabase இலிருந்து திரைப்படத் தரவைப் பதிவேற்றுகிறது."""
+    try:
+        response = supabase.table("movies").select("*").execute()
+        movies = response.data or []
+        movies_data = {}
+        for movie in movies:
+            cleaned_title = clean_title(movie['title'])
+            movies_data[cleaned_title] = {
+                'poster_url': movie['poster_url'],
+                'files': {
+                    '480p': movie['file_480p'],
+                    '720p': movie['file_720p'],
+                    '1080p': movie['file_1080p'],
+                }
+            }
+        logging.info(f"✅ {len(movies_data)} திரைப்படங்கள் Supabase இலிருந்து ஏற்றப்பட்டன.")
+        return movies_data
+    except Exception as e:
+        logging.error(f"❌ Supabase இலிருந்து திரைப்படத் தரவைப் பதிவேற்ற முடியவில்லை: {e}")
+        return {}
+
+# movies_data ஐ global ஆக ஏற்றவும் (இப்போது clean_title வரையறுக்கப்பட்டுள்ளது)
+movies_data = load_movies_data()
 
 # --- Decorator for restricted commands ---
 def restricted(func):
@@ -57,74 +113,10 @@ def restricted(func):
         return await func(update, context, *args, **kwargs)
     return wrapped
 
-# --- Load movies from Supabase ---
-def load_movies_data():
-    """Supabase இலிருந்து திரைப்படத் தரவைப் பதிவேற்றுகிறது."""
-    try:
-        response = supabase.table("movies").select("*").execute()
-        movies = response.data or []
-        movies_data = {}
-        for movie in movies:
-            # தலைப்பை clean_title மூலம் சுத்தம் செய்து lowercase ஆக மாற்றவும்
-            cleaned_title = clean_title(movie['title']) 
-            movies_data[cleaned_title] = {
-                'poster_url': movie['poster_url'], # Telegram photo file_id
-                'files': {
-                    '480p': movie['file_480p'], # Telegram document file_id
-                    '720p': movie['file_720p'],
-                    '1080p': movie['file_1080p'],
-                }
-            }
-        logging.info(f"✅ {len(movies_data)} திரைப்படங்கள் Supabase இலிருந்து ஏற்றப்பட்டன.")
-        return movies_data
-    except Exception as e:
-        logging.error(f"❌ Supabase இலிருந்து திரைப்படத் தரவைப் பதிவேற்ற முடியவில்லை: {e}")
-        return {}
-
-movies_data = load_movies_data()
-
-# --- Extract title from filename ---
-def extract_title(filename: str) -> str:
-    """ஃபைல் பெயரிலிருந்து திரைப்படத் தலைப்பைப் பிரித்தெடுக்கிறது."""
-    filename = re.sub(r"@\S+", "", filename) # @username களை நீக்கவும்
-    # Resolution, codec, quality indicators போன்றவற்றை நீக்கவும்
-    filename = re.sub(r"\b(480p|720p|1080p|x264|x265|HEVC|HDRip|WEBRip|AAC|10bit|DS4K|UNTOUCHED|mkv|mp4|HD|HQ|Tamil|Telugu|Hindi|English|Dubbed|Org|Original|Proper)\b", "", filename, flags=re.IGNORECASE)
-    filename = re.sub(r"[\[\]\(\)\{\}]", " ", filename) # அடைப்புக்குறிகளை இடைவெளியாக மாற்றவும்
-    filename = re.sub(r"\s+", " ", filename).strip() # பல இடைவெளிகளை ஒற்றை இடைவெளியாக மாற்றவும்
-
-    # (Year) உடன் தலைப்பைக் கண்டறிய முயற்சிக்கவும்
-    match = re.search(r"([a-zA-Z\s]+)(?:\(?)(20\d{2})(?:\)?)", filename)
-    if match:
-        title = f"{match.group(1).strip()} ({match.group(2)})"
-        return title
-
-    # Year இல்லாமல் முதல் hyphen அல்லது எண்ணுக்கு முன் உள்ள பகுதியைப் பிரித்தெடுக்கவும்
-    title = re.split(r"[-0-9]", filename)[0].strip()
-    return title
-
-# --- Clean title for DB storage and comparison ---
-def clean_title(title: str) -> str:
-    """
-    திரைப்படத் தலைப்பை சுத்தம் செய்து, lowercase ஆக மாற்றுகிறது.
-    இது சேமிக்கும்போதும், தேடும்போதும், நீக்கும்போதும் ஒரே மாதிரியான தலைப்பை உறுதி செய்கிறது.
-    """
-    # முதலில் அனைத்து எழுத்துக்களையும் lowercase ஆக மாற்றவும்
-    cleaned = title.lower()
-    # S (Symbol) மற்றும் C (Other) யூனிகோட் வகைகளை நீக்கவும்
-    cleaned = ''.join(c for c in cleaned if unicodedata.category(c)[0] not in ['S', 'C'])
-    # _ (underscore) தவிர மற்ற non-word characters மற்றும் brackets-ஐ நீக்கவும்
-    # ( ) போன்ற அடைப்புக்குறிகளை நீக்காமல் வைத்திருக்க வேண்டும் என்றால், regex ஐ மாற்றலாம்.
-    # தற்போதைய தேவைக்கு, தலைப்பில் () இருந்தால் அதை நீக்காமல் வைத்திருக்க, regex ஐ மாற்றுகிறேன்.
-    cleaned = re.sub(r'[^\w\s\(\)]', '', cleaned) # \(\) ஐ சேர்த்தேன்
-    # பல இடைவெளிகளை ஒற்றை இடைவெளியாக மாற்றி, தொடக்க மற்றும் இறுதி இடைவெளிகளை நீக்கவும்
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    return cleaned
-
 # --- Save movie to Supabase ---
 def save_movie_to_db(title: str, poster_id: str, file_ids: list) -> bool:
     """திரைப்படத் தரவை Supabase டேட்டாபேஸில் சேமிக்கிறது."""
     try:
-        # தலைப்பை clean_title மூலம் சுத்தம் செய்து lowercase ஆக மாற்றவும்
         cleaned_title_for_db = clean_title(title)
         logging.info(f"Saving movie with cleaned title: '{cleaned_title_for_db}'")
 
@@ -171,14 +163,13 @@ def time_diff(past_time: datetime) -> str:
 # --- Delete messages after 10 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
     """ஒரு குறிப்பிட்ட காலத்திற்குப் பிறகு Telegram மெசேஜை நீக்குகிறது."""
-    await asyncio.sleep(600)  # 600 வினாடிகள் = 10 நிமிடங்கள் காத்திருக்கவும்
+    await asyncio.sleep(600)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         logging.info(f"Message {message_id} in chat {chat_id} deleted after delay.")
     except Exception as e:
         logging.warning(f"Error deleting message {message_id} in chat {chat_id}: {e}")
 
-# --- Send movie poster with resolution buttons ---
 # --- Send movie poster with resolution buttons ---
 async def send_movie_poster(message: Message, movie_name_key: str, context: ContextTypes.DEFAULT_TYPE):
     """திரைப்பட போஸ்டரை ரெசல்யூஷன் பட்டன்களுடன் அனுப்புகிறது."""
@@ -232,8 +223,7 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = message.from_user.id
     chat_id = message.chat.id
 
-    if user_id not in user_files or user_files[user_id]["poster"] is None and not message.photo and not message.document:
-        # /addmovie அனுப்பாமல் நேரடியாக ஃபைல்களை அனுப்பினால்
+    if user_id not in user_files or (user_files[user_id]["poster"] is None and not message.photo and not message.document):
         await message.reply_text("❗ முதலில் /addmovie அனுப்பவும்.")
         return
 
@@ -255,7 +245,7 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movie_file_name = message.document.file_name
 
         user_files[user_id]["movies"].append({
-            "file_id": movie_file_id, # Telegram file_id சேமிக்கப்படும்
+            "file_id": movie_file_id,
             "file_name": movie_file_name
         })
 
@@ -270,50 +260,44 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         poster_id = user_files[user_id]["poster"]
         movies_list = user_files[user_id]["movies"]
         
-        # Telegram file_id-களைப் பிரித்தெடுக்கவும்
         telegram_file_ids_for_db = [m["file_id"] for m in movies_list] 
         
-        # முதல் ஃபைல் பெயரிலிருந்து தலைப்பைப் பிரித்தெடுத்து சுத்தம் செய்யவும்
         raw_title = extract_title(movies_list[0]["file_name"])
         cleaned_title = clean_title(raw_title)
 
         saved = save_movie_to_db(cleaned_title, poster_id, telegram_file_ids_for_db) 
         if saved:
             global movies_data
-            movies_data = load_movies_data() # புதிய தரவை ஏற்றவும்
+            movies_data = load_movies_data()
             await message.reply_text(f"✅ Movie saved as *{cleaned_title.title()}*.", parse_mode="Markdown")
         else:
             await message.reply_text("❌ DB-ல் சேமிக்க முடியவில்லை.")
 
-        # செயல்முறை முடிந்ததும் user_files ஐ சுத்தம் செய்யவும்
         user_files[user_id] = {"poster": None, "movies": []}
 
 # --- Send movie on text message (search) ---
 async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """பயனரின் தேடல் வினவலுக்குப் பதிலளிக்கிறது."""
-    search_query = update.message.text.strip() # clean_title இல் lower() இருப்பதால் இங்கு மாற்ற வேண்டாம்
+    search_query = update.message.text.strip()
 
     global movies_data
-    movies_data = load_movies_data() # சமீபத்திய தரவை ஏற்றவும்
+    movies_data = load_movies_data()
 
     if not movies_data:
         await update.message.reply_text("டேட்டாபேஸ் காலியாக உள்ளது அல்லது ஏற்ற முடியவில்லை. பின்னர் முயற்சிக்கவும்.")
         return
 
-    # clean_title ஐப் பயன்படுத்தி தேடல் வினவலை சுத்தம் செய்யவும்
     cleaned_search_query = clean_title(search_query)
 
-    # rapidfuzz மூலம் பொருத்தத்தைக் கண்டறியவும்
     movie_titles = list(movies_data.keys())
-    best_match = process.extractOne(cleaned_search_query, movie_titles, score_cutoff=80) # 80% அல்லது அதற்கு மேல் உள்ள பொருத்தத்தை மட்டும் எடுக்கவும்
+    best_match = process.extractOne(cleaned_search_query, movie_titles, score_cutoff=80)
 
     if best_match:
-        matched_title_key = best_match[0] # பொருத்தமான திரைப்படம்
-        logging.info(f"Retrieved movie title from DB for search: '{matched_title_key}'") # லாக் சேர்க்கப்பட்டது
+        matched_title_key = best_match[0]
+        logging.info(f"Retrieved movie title from DB for search: '{matched_title_key}'")
         await send_movie_poster(update.message, matched_title_key, context)
     else:
-        # பொருத்தமான திரைப்படங்கள் இல்லை என்றால், ஒத்த பெயர்களைப் பரிந்துரைக்கவும்
-        suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=60) # குறைந்த score_cutoff உடன் பரிந்துரைகளை வழங்கவும்
+        suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=60)
         if suggestions:
             keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie_{m[0]}")] for m in suggestions]
             await update.message.reply_text(
@@ -335,7 +319,7 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
         if not movie:
             return await query.message.reply_text("❌ படம் கிடைக்கவில்லை!")
 
-        file_id_to_send = movie['files'].get(res) # இது Telegram file_id
+        file_id_to_send = movie['files'].get(res)
 
         if file_id_to_send:
             caption = (
@@ -346,21 +330,19 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
 
             sent_msg = await context.bot.send_document(
                 chat_id=query.from_user.id,
-                document=file_id_to_send, # Telegram file_id-யைப் பயன்படுத்தவும்
+                document=file_id_to_send,
                 caption=caption,
                 parse_mode="HTML"
             )
 
             await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
 
-            # Telegram file_id-கள் பொதுவாக Telegram சர்வரில் இருக்கும், எனவே delete_after_delay தேவையில்லை.
-            # ஆனால் நீங்கள் மெசேஜ் டெலிட் செய்ய விரும்பினால், இந்த பகுதியை அன்கமெண்ட் செய்யலாம்.
-            # asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
         else:
             await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
     except Exception as e:
         logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
         await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
+
 
 # --- Handle movie button click from suggestions ---
 async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -373,8 +355,7 @@ async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.message.reply_text("தவறான கோரிக்கை.")
         return
 
-    # clean_title மூலம் சுத்தம் செய்யப்பட்ட பெயரைப் பயன்படுத்தவும்
-    movie_name_key = "_".join(data_parts[1:]) # callback_data இல் underscore இருந்தால்
+    movie_name_key = "_".join(data_parts[1:])
     
     if movie_name_key in movies_data:
         await send_movie_poster(query.message, movie_name_key, context)
@@ -389,7 +370,6 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = supabase.table("movies").select("id", count="exact").execute()
         total_movies = response.count or 0
 
-        # டேட்டாபேஸ் அளவைக் கணக்கிட முடியவில்லை என்றால், "N/A" என்று காட்டவும்
         db_size_mb = "N/A" 
 
         last_movie_resp = supabase.table("movies").select("title", "uploaded_at").order("id", desc=True).limit(1).execute()
@@ -473,14 +453,13 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     full_args = " ".join(args)
     old_title_raw, new_title_raw = map(lambda x: x.strip(), full_args.split("|", 1))
     
-    # தலைப்புகளை clean_title மூலம் சுத்தம் செய்யவும்
-    old_title_cleaned = clean_title(old_title_raw)
-    new_title_cleaned = clean_title(new_title_raw)
+    cleaned_old_title = clean_title(old_title_raw)
+    cleaned_new_title = clean_title(new_title_raw)
 
-    logging.info(f"Edittitle parsed - Old Cleaned: '{old_title_cleaned}', New Cleaned: '{new_title_cleaned}'")
+    logging.info(f"Edittitle parsed - Old Cleaned: '{cleaned_old_title}', New Cleaned: '{cleaned_new_title}'")
 
     try:
-        response = supabase.table("movies").update({"title": new_title_cleaned}).eq("title", old_title_cleaned).execute()
+        response = supabase.table("movies").update({"title": cleaned_new_title}).eq("title", cleaned_old_title).execute()
 
         if response.data:
             global movies_data
@@ -502,14 +481,14 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     title_raw = " ".join(args).strip()
-    title_to_delete_cleaned = clean_title(title_raw) # தலைப்பை clean_title மூலம் சுத்தம் செய்யவும்
+    title_to_delete_cleaned = clean_title(title_raw)
 
     logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}'")
 
     try:
         response = supabase.table("movies").delete().eq("title", title_to_delete_cleaned).execute()
 
-        if response.data: # Supabase client returns data if delete was successful
+        if response.data:
             global movies_data
             movies_data = load_movies_data()
             await update.message.reply_text(f"✅ *{title_raw.title()}* படத்தை நீக்கிவிட்டேன்.", parse_mode="Markdown")
@@ -570,7 +549,7 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = f"🎬 Movies List - பக்கம் {page}/{total_pages}\n\n"
     for i, title in enumerate(movies, start=offset + 1):
-        text += f"{i}. {title.title()}\n" # தலைப்பை title case இல் காட்டவும்
+        text += f"{i}. {title.title()}\n"
 
     keyboard = []
     if page > 1:
@@ -648,7 +627,7 @@ async def main():
 
     # Callback ஹேண்ட்லர்கள்
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res_"))
-    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie_"))
+    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie_")) # CallbackQueryHandler ஐப் பயன்படுத்தவும்
     app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
