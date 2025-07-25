@@ -474,10 +474,13 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     title_raw = " ".join(args).strip()
     title_to_delete = clean_title(title_raw).lower() # Clean and lower for comparison
 
+    # இந்த வரியைச் சேர்க்கவும்:
+    logging.info(f"Attempting to delete title: '{title_to_delete}'")
+
     try:
         response = supabase.table("movies").delete().eq("title", title_to_delete).execute()
 
-        if response.data: # Supabase client returns data if delete was successful
+        if response.data:
             global movies_data
             movies_data = load_movies_data()
             await update.message.reply_text(f"✅ *{title_raw.title()}* படத்தை delete பண்ணிட்டேன்.", parse_mode="Markdown")
