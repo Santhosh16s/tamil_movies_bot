@@ -339,7 +339,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (
             f"📊 Bot Status:\n"
             f"• Total Movies: {total_movies}\n"
-            f"• Database Size: {db_size_mb} MB\n"
+            f"• Database Size: {db_size_mb}\n"
             f"• Last Upload: \"{last_title}\" – {time_ago}"
         )
 
@@ -397,7 +397,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ User not in admin list.")
 
-# --- /edittitle command ---
 # --- /edittitle command ---
 async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -570,7 +569,7 @@ async def main():
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
-    app.add_handler(CommandHandler("movielist", movielist))
+    app.add_handler(CommandHandler("movielist", movielist)) # <-- இது இங்கே உள்ளது
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("adminpanel", admin_panel))
     app.add_handler(CommandHandler("addadmin", add_admin))
@@ -581,7 +580,7 @@ async def main():
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
 
     # Movie search text handler
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie)) # <-- இது முக்கியம்
 
     # Callback handlers
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res_"))
