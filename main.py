@@ -479,6 +479,9 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ இந்த command admins மட்டுமே பயன்படுத்த முடியும்")
         return
 
+    # இந்தப் புதிய Logging வரிகளைச் சேர்க்கவும்
+    logging.info(f"User {user_id} requested /movielist command.") 
+
     page = 1
     if context.args:
         try:
@@ -490,9 +493,13 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     limit = 20
     offset = (page - 1) * limit
+
     movies = load_movies_page(limit=limit, offset=offset)
     total_movies = get_total_movies_count()
     total_pages = (total_movies + limit - 1) // limit
+
+    # இந்தப் புதிய Logging வரிகளைச் சேர்க்கவும்
+    logging.info(f"Movielist details - Page: {page}, Offset: {offset}, Total Movies: {total_movies}, Total Pages: {total_pages}, Movies on page: {len(movies)}")
 
     if not movies:
         await update.message.reply_text("❌ இந்த பக்கத்தில் படம் இல்லை.")
@@ -511,7 +518,7 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await update.message.reply_text(text, reply_markup=reply_markup)
 
-# --- movielist pagination callback ---
+# movielist pagination callback - இதை மாற்ற வேண்டாம், இதுவும் சரியான குறியீடுதான்
 async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
