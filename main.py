@@ -91,8 +91,13 @@ def extract_title(filename):
 
 # --- Clean title for DB storage ---
 def clean_title(title):
+    # முதலில் அனைத்து எழுத்துக்களையும் lowercase ஆக மாற்றவும்
+    title = title.lower()
+    # S (Symbol) மற்றும் C (Other) யூனிகோட் வகைகளை நீக்கவும்
     cleaned = ''.join(c for c in title if unicodedata.category(c)[0] not in ['S', 'C'])
+    # _ (underscore) தவிர மற்ற non-word characters மற்றும் brackets-ஐ நீக்கவும்
     cleaned = re.sub(r'[^\w\s\(\)]', '', cleaned)
+    # பல இடைவெளிகளை ஒற்றை இடைவெளியாக மாற்றி, தொடக்க மற்றும் இறுதி இடைவெளிகளை நீக்கவும்
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned
 
@@ -169,7 +174,7 @@ async def send_movie_poster(message, movie_name, context):
 
 # --- send_movie function (for text search) ---
 async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    movie_name = update.message.text.lower().strip() # பயனரின் மெசேஜை சிறிய எழுத்துக்களில் எடுக்கவும்
+    movie_name = update.message.text.strip() # பயனரின் மெசேஜை சிறிய எழுத்துக்களில் எடுக்கவும்
 
     # சிறந்த பொருத்தத்தைக் கண்டறிய rapidfuzz ஐப் பயன்படுத்தவும்
     if not movies_data:
@@ -250,8 +255,9 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # இப்போதைக்கு, நீங்கள் 480p, 720p, 1080p வரிசையில் ஃபைல்களை அனுப்புவீர்கள் என்று கருதுவோம்.
         telegram_file_ids_for_db = [m["file_id"] for m in movies] 
         
-        title = extract_title(movies[0]["file_name"]).lower()
+        title = extract_title(movies[0]["file_name"]) # .lower() ஐ நீக்கப்பட்டது
         title = clean_title(title)
+# பின்னர் save_movie_to_db இல் இந்த clean செய்யப்பட்ட title தான் அனுப்பப்படும்.
 
         # DB-க்கு Telegram file_ids அனுப்பவும்
         saved = save_movie_to_db(title, poster_id, telegram_file_ids_for_db) 
@@ -473,7 +479,7 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     title_raw = " ".join(args).strip()
-    title_to_delete = clean_title(title_raw).lower() # Clean and lower for comparison
+    title_to_delete = clean_title(title_raw) # .lower() ஐ நீக்கப்பட்டது# Clean and lower for comparison
 
     # இந்த வரியைச் சேர்க்கவும்:
     logging.info(f"Attempting to delete title: '{title_to_delete}'")
