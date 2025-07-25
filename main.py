@@ -398,6 +398,7 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ User not in admin list.")
 
 # --- /edittitle command ---
+# --- /edittitle command ---
 async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id not in admin_ids:
@@ -405,30 +406,35 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     args = context.args
+    logging.info(f"Edittitle args: {args}") # இதைச் சேர்க்கவும்
     if len(args) < 2:
         await update.message.reply_text("⚠️ Usage: `/edittitle <old title> | <new title>`", parse_mode="Markdown")
         return
 
     full_args = " ".join(args)
+    logging.info(f"Edittitle full_args: {full_args}") # இதைச் சேர்க்கவும்
     if "|" not in full_args:
         await update.message.reply_text("⚠️ Usage: `/edittitle <old title> | <new title>`", parse_mode="Markdown")
         return
 
     old_title, new_title = map(lambda x: x.strip().lower(), full_args.split("|", 1))
+    logging.info(f"Edittitle parsed - Old: '{old_title}', New: '{new_title}'") # இதைச் சேர்க்கவும்
 
     try:
-        supabase.table("movies").update({"title": new_title}).eq("title", old_title).execute()
+        # ... rest of your code ...
+        response = supabase.table("movies").update({"title": new_title}).eq("title", old_title).execute()
 
-        if supabase:
+        # Check if any rows were updated
+        if response.data: # Supabase client returns data if update was successful
             global movies_data
             movies_data = load_movies_data()
             await update.message.reply_text(f"✅ *{old_title.title()}* இன் title, *{new_title.title()}* ஆக மாற்றப்பட்டது.", parse_mode="Markdown")
         else:
-            await update.message.reply_text("❌ அந்தப் படம் கிடைக்கலை. சரியான பழைய பெயர் கொடுக்கவும்.")
+            await update.message.reply_text("❌ அந்தப் படம் கிடைக்கலை. சரியான பழைய பெயர் கொடுக்கவும்.") # இதுவே உங்களுக்கு வரும் பதில்
     except Exception as e:
         logging.error(f"Title update error: {e}")
         await update.message.reply_text("❌ Title update செய்ய முடியவில்லை.")
-
+        
 # --- /deletemovie command ---
 async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
