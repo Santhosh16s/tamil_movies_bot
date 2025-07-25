@@ -63,9 +63,9 @@ def load_movies_data():
     movies_data = {}
     for movie in movies:
         movies_data[movie['title'].lower()] = {
-            'poster_url': movie['poster_url'],
+            'poster_url': movie['poster_url'], # இது Telegram photo file_id ஆக இருக்கும்
             'files': {
-                '480p': movie['file_480p'],
+                '480p': movie['file_480p'], # இவை Telegram document file_id-கள்
                 '720p': movie['file_720p'],
                 '1080p': movie['file_1080p'],
             }
@@ -97,15 +97,14 @@ def clean_title(title):
     return cleaned
 
 # --- Save movie to DB ---
-# --- Save movie to Supabase ---
 def save_movie_to_db(title, poster_id, file_ids):
     try:
         data = {
             "title": title,
             "poster_url": poster_id,
-            "file_480p": file_ids[0],
-            "file_720p": file_ids[1],
-            "file_1080p": file_ids[2],
+            "file_480p": file_ids[0] if len(file_ids) > 0 else None,
+            "file_720p": file_ids[1] if len(file_ids) > 1 else None,
+            "file_1080p": file_ids[2] if len(file_ids) > 2 else None,
             "uploaded_at": datetime.utcnow().isoformat()
         }
         supabase.table("movies").insert(data).execute()
@@ -133,6 +132,60 @@ def time_diff(past_time):
         return f"{int(hours)} hours ago"
     else:
         return f"{int(days)} days ago"
+
+# --- delete_after_delay function ---
+async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
+    await asyncio.sleep(600)  # 600 வினாடிகள் = 10 நிமிடங்கள் காத்திருக்கவும்
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        logging.info(f"Message {message_id} in chat {chat_id} deleted after delay.")
+    except Exception as e:
+        logging.error(f"Error deleting message {message_id} in chat {chat_id}: {e}")
+
+# --- send_movie_poster function ---
+async def send_movie_poster(message, movie_name, context):
+    movie = movies_data.get(movie_name)
+    if movie and movie['poster_url']:
+        try:
+            # poster_url Telegram file_id-ஐ சேமிக்கிறது என்று வைத்துக் கொள்வோம்
+            await context.bot.send_photo(
+                chat_id=message.chat.id,
+                photo=movie['poster_url'],
+                caption=f"🎬 *{movie_name.title()}*\n\n"
+                        "👇 *Resolution Choose பண்ணுங்க*",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("480p", callback_data=f"res_{movie_name}_480p")],
+                    [InlineKeyboardButton("720p", callback_data=f"res_{movie_name}_720p")],
+                    [InlineKeyboardButton("1080p", callback_data=f"res_{movie_name}_1080p")]
+                ])
+            )
+        except Exception as e:
+            logging.error(f"போஸ்டர் அனுப்ப பிழை: {e}")
+            await message.reply_text("❌ போஸ்டர் அனுப்ப முடியவில்லை. படம் கிடைக்கவில்லை அல்லது பிழை.")
+    else:
+        await message.reply_text("❌ படம் கிடைக்கவில்லை அல்லது போஸ்டர் இல்லை.")
+
+# --- send_movie function (for text search) ---
+async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    movie_name = update.message.text.lower().strip() # பயனரின் மெசேஜை சிறிய எழுத்துக்களில் எடுக்கவும்
+
+    # சிறந்த பொருத்தத்தைக் கண்டறிய rapidfuzz ஐப் பயன்படுத்தவும்
+    if not movies_data:
+        await update.message.reply_text("டேட்டாபேஸ் காலியாக உள்ளது அல்லது ஏற்ற முடியவில்லை.")
+        return
+
+    # டிக்ஷனரியின் keys-ஐ மட்டுமே rapidfuzz க்கு அனுப்பவும்
+    movie_titles = list(movies_data.keys())
+    
+    # process.extractOne முதல் பொருத்தம் மற்றும் அதன் score ஐத் தரும்
+    best_match = process.extractOne(movie_name, movie_titles)
+
+    if best_match and best_match[1] >= 80: # 80% அல்லது அதற்கு மேல் உள்ள பொருத்தத்தை மட்டும் எடுக்கவும்
+        matched_title = best_match[0] # பொருத்தமான திரைப்படம்
+        await send_movie_poster(update.message, matched_title, context)
+    else:
+        await update.message.reply_text("❌ படம் கிடைக்கவில்லை!")
 
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,7 +219,7 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
         return
 
-    # Movie files (இந்த பகுதிதான் மாற்றப்பட்டது)
+    # Movie files (Telegram file_id-யைப் பயன்படுத்தவும்)
     if message.document:
         if len(user_files[user_id]["movies"]) >= 3:
             await message.reply_text("❗ மூன்று movie files ஏற்கனவே பெற்றுவிட்டேன்.")
@@ -175,118 +228,44 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movie_file_id = message.document.file_id
         movie_file_name = message.document.file_name
 
-        try:
-            # Telegram-ல் இருந்து ஃபைலைப் பெறவும்
-            file_obj = await context.bot.get_file(movie_file_id)
-            
-            # ஃபைல் உள்ளடக்கத்தைப் பதிவிறக்கவும்
-            file_content = await file_obj.download_as_bytes()
+        user_files[user_id]["movies"].append({
+            "file_id": movie_file_id, # இங்கு Telegram file_id சேமிக்கப்படும்
+            "file_name": movie_file_name
+        })
 
-            # Supabase Storage-ல் பதிவேற்றுவதற்கான path-ஐ உருவாக்கவும் (உங்கள் தேவைக்கேற்ப மாற்றலாம்)
-            # 'movies' என்பது ஒரு subfolder ஆக செயல்படும். ஃபைல் பெயர் தனித்துவமானது என்பதை உறுதிப்படுத்தவும்.
-            storage_path = f"movies/{movie_file_name}" 
-
-            # Supabase Storage-ல் ஃபைலை பதிவேற்றவும்
-            # 'movie-files' என்பதை உங்கள் பக்கெட் பெயராக மாற்றவும்!
-            response = supabase.storage.from_('movie-files').upload(storage_path, file_content, {"content-type": message.document.mime_type})
-            
-            # பதிவேற்றிய ஃபைலின் பொதுவான URL-ஐப் பெறவும்
-            file_url = supabase.storage.from_('movie-files').get_public_url(storage_path)
-
-            user_files[user_id]["movies"].append({
-                "file_id": file_url, # இனி Telegram file_id-க்கு பதிலாக பொதுவான URL சேமிக்கப்படும்
-                "file_name": movie_file_name
-            })
-
-            await message.reply_text(
-                f"🎥 Movie file {len(user_files[user_id]['movies'])} received and uploaded.\n📂 `{movie_file_name}`",
-                parse_mode="Markdown"
-            )
-            asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
-
-        except Exception as e:
-            logging.error(f"Supabase Storage upload error: {e}")
-            await message.reply_text("❌ கோப்பு Supabase Storage-க்கு பதிவேற்ற முடியவில்லை.")
-            return
+        await message.reply_text(
+            f"🎥 Movie file {len(user_files[user_id]['movies'])} received.\n📂 `{movie_file_name}`",
+            parse_mode="Markdown"
+        )
+        asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
 
     # If all files received, save to DB
     if user_files[user_id]["poster"] and len(user_files[user_id]["movies"]) == 3:
-        poster_id = user_files[user_id]["poster"]
+        poster_id = user_files[user_id]["poster"] # போஸ்டர் இன்னும் Telegram file_id-யாக இருக்கும்
         movies = user_files[user_id]["movies"]
-        file_ids = [m["file_id"] for m in movies] # இது இப்போது URL-கள்
         
-        # ensure title extraction is based on the first movie file received
+        # files list-ன் order சரியாக இருப்பதை உறுதிப்படுத்தவும் (480p, 720p, 1080p)
+        # நீங்கள் அனுப்பும் order-ஐப் பொறுத்து இது அமையும். இல்லையெனில், file_name-ல் இருந்து resolution-ஐப் பிரித்தெடுத்து வரிசைப்படுத்த வேண்டும்.
+        # இப்போதைக்கு, நீங்கள் 480p, 720p, 1080p வரிசையில் ஃபைல்களை அனுப்புவீர்கள் என்று கருதுவோம்.
+        telegram_file_ids_for_db = [m["file_id"] for m in movies] 
+        
         title = extract_title(movies[0]["file_name"]).lower()
         title = clean_title(title)
 
-        saved = save_movie_to_db(title, poster_id, file_ids)
+        # DB-க்கு Telegram file_ids அனுப்பவும்
+        saved = save_movie_to_db(title, poster_id, telegram_file_ids_for_db) 
         if saved:
-            global movies_data # இந்த வரி சரியான இடத்தில் இருக்க வேண்டும்
-            movies_data = load_movies_data()
+            global movies_data
+            movies_data = load_movies_data() # புதிய தரவை ஏற்றவும்
             await message.reply_text(f"✅ Movie saved as *{title.title()}*.", parse_mode="Markdown")
         else:
             await message.reply_text("❌ DB-ல் சேமிக்க முடியவில்லை.")
 
         user_files[user_id] = {"poster": None, "movies": []}
 
-# --- Delete messages after 10 minutes ---
-async def delete_after_delay(context, chat_id, message_id):
-    await asyncio.sleep(600)
-    try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception as e:
-        logging.warning(f"Delete failed: {e}")
 
-# --- Send movie on text message (search) ---
-async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    movie_name = update.message.text.strip().lower()
-
-    global movies_data
-    movies_data = load_movies_data()
-
-    if movie_name in movies_data:
-        await send_movie_poster(update.message, movie_name, context)
-    else:
-        matches = process.extract(movie_name, movies_data.keys(), limit=5, score_cutoff=80)
-        if matches:
-            keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie_{m[0]}")] for m in matches]
-            await update.message.reply_text(
-                "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        else:
-            await update.message.reply_text("❌ படம் கிடைக்கவில்லை!")
-
-# --- Send movie poster with resolution buttons ---
-async def send_movie_poster(message, movie_name_key, context):
-    movie = movies_data[movie_name_key]
-
-    caption = (
-        f"🎬 {movie_name_key.title()}\n\n"
-        f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!"
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton("480p", callback_data=f"res_{movie_name_key}_480p"),
-            InlineKeyboardButton("720p", callback_data=f"res_{movie_name_key}_720p"),
-            InlineKeyboardButton("1080p", callback_data=f"res_{movie_name_key}_1080p"),
-        ]
-    ]
-
-    try:
-        sent = await message.reply_photo(
-            movie["poster_url"],
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        asyncio.create_task(delete_after_delay(context, message.chat_id, sent.message_id))
-    except Exception as e:
-        logging.error(f"Poster error: {e}")
-        await message.reply_text("⚠️ போஸ்டர் அனுப்ப முடியவில்லை.")
-
-# --- Handle resolution button clicks ---
+# --- handle_resolution_click செயல்பாட்டில் மாற்றம் ---
+# Telegram file_id-யை நேரடியாகப் பயன்படுத்தவும்
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -296,8 +275,9 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
         if not movie:
             return await query.message.reply_text("❌ படம் கிடைக்கவில்லை!")
 
-        file_url = movie['files'].get(res)
-        if file_url:
+        file_id_to_send = movie['files'].get(res) # இது Telegram file_id
+
+        if file_id_to_send:
             caption = (
                 f"🎬 {movie_name.title()}\n\n"
                 f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
@@ -306,35 +286,46 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
 
             sent_msg = await context.bot.send_document(
                 chat_id=query.from_user.id,
-                document=file_url,
+                document=file_id_to_send, # Telegram file_id-யைப் பயன்படுத்தவும்
                 caption=caption,
                 parse_mode="HTML"
             )
 
             await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
 
-            async def delete_sent_file():
-                await asyncio.sleep(600)
-                try:
-                    await context.bot.delete_message(chat_id=sent_msg.chat.id, message_id=sent_msg.message_id)
-                except Exception as e:
-                    logging.error(f"File delete error: {e}")
-
-            asyncio.create_task(delete_sent_file())
+            # File 10 நிமிடங்களில் நீக்கப்படும் செயல்பாடு இங்கு தேவைப்படாது,
+            # ஏனெனில் இது Telegram சர்வரில் உள்ளது, உங்கள் பாட் டவுன்லோட் செய்து அனுப்புவதில்லை.
+            # நீங்கள் இதை நீக்கலாம் அல்லது உங்கள் விருப்பப்படி வைத்துக் கொள்ளலாம்.
+            # async def delete_sent_file():
+            #     await asyncio.sleep(600)
+            #     try:
+            #         await context.bot.delete_message(chat_id=sent_msg.chat.id, message_id=sent_msg.message_id)
+            #     except Exception as e:
+            #         logging.error(f"File delete error: {e}")
+            # asyncio.create_task(delete_sent_file())
         else:
             await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
     except Exception as e:
         logging.error(f"File send error: {e}")
         await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
 
+
 # --- Handle movie button click from suggestions ---
 async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    movie_name = query.data.split("_")[1]
+    await query.answer()
+    data_parts = query.data.split("_")
+    
+    if len(data_parts) < 2:
+        await query.message.reply_text("தவறான கோரிக்கை.")
+        return
+
+    movie_name = "_".join(data_parts[1:]) # movie_name underscore-ஐக் கொண்டிருந்தால் சரிசெய்யப்பட்டது
+
     if movie_name in movies_data:
         await send_movie_poster(query.message, movie_name, context)
     else:
-        await query.answer("❌ படம் கிடைக்கவில்லை!")
+        await query.message.reply_text("❌ படம் கிடைக்கவில்லை!")
 
 # --- /status command ---
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -394,12 +385,15 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Usage: /addadmin <user_id>")
         return
 
-    new_admin_id = int(context.args[0])
-    if new_admin_id in admin_ids:
-        await update.message.reply_text("⚠️ This user is already an admin.")
-    else:
-        admin_ids.add(new_admin_id)
-        await update.message.reply_text(f"✅ Added new admin: {new_admin_id}")
+    try:
+        new_admin_id = int(context.args[0])
+        if new_admin_id in admin_ids:
+            await update.message.reply_text("⚠️ This user is already an admin.")
+        else:
+            admin_ids.add(new_admin_id)
+            await update.message.reply_text(f"✅ Added new admin: {new_admin_id}")
+    except ValueError:
+        await update.message.reply_text("⚠️ Invalid user ID. Please provide a number.")
 
 # --- /removeadmin <id> command ---
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -412,15 +406,18 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Usage: /removeadmin <user_id>")
         return
 
-    rem_admin_id = int(context.args[0])
-    if rem_admin_id in admin_ids:
-        if len(admin_ids) == 1:
-            await update.message.reply_text("⚠️ At least one admin must remain.")
+    try:
+        rem_admin_id = int(context.args[0])
+        if rem_admin_id in admin_ids:
+            if len(admin_ids) == 1:
+                await update.message.reply_text("⚠️ At least one admin must remain.")
+            else:
+                admin_ids.remove(rem_admin_id)
+                await update.message.reply_text(f"✅ Removed admin: {rem_admin_id}")
         else:
-            admin_ids.remove(rem_admin_id)
-            await update.message.reply_text(f"✅ Removed admin: {rem_admin_id}")
-    else:
-        await update.message.reply_text("❌ User not in admin list.")
+            await update.message.reply_text("❌ User not in admin list.")
+    except ValueError:
+        await update.message.reply_text("⚠️ Invalid user ID. Please provide a number.")
 
 # --- /edittitle command ---
 async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -431,7 +428,7 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     args = context.args
     logging.info(f"Edittitle args: {args}") # இதைச் சேர்க்கவும்
-    if len(args) < 2:
+    if len(args) < 1: # 최소 ஒரு ஆர்குமென்ட் தேவை - பழைய பெயர் அல்லது "| புதிய பெயர்"
         await update.message.reply_text("⚠️ Usage: `/edittitle <old title> | <new title>`", parse_mode="Markdown")
         return
 
@@ -441,20 +438,23 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Usage: `/edittitle <old title> | <new title>`", parse_mode="Markdown")
         return
 
-    old_title, new_title = map(lambda x: x.strip().lower(), full_args.split("|", 1))
+    old_title_raw, new_title_raw = map(lambda x: x.strip(), full_args.split("|", 1))
+    
+    # Clean and lower case titles for comparison and storage
+    old_title = clean_title(old_title_raw).lower()
+    new_title = clean_title(new_title_raw).lower()
+
     logging.info(f"Edittitle parsed - Old: '{old_title}', New: '{new_title}'") # இதைச் சேர்க்கவும்
 
     try:
-        # ... rest of your code ...
         response = supabase.table("movies").update({"title": new_title}).eq("title", old_title).execute()
 
-        # Check if any rows were updated
         if response.data: # Supabase client returns data if update was successful
             global movies_data
             movies_data = load_movies_data()
-            await update.message.reply_text(f"✅ *{old_title.title()}* இன் title, *{new_title.title()}* ஆக மாற்றப்பட்டது.", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ *{old_title_raw.title()}* இன் title, *{new_title_raw.title()}* ஆக மாற்றப்பட்டது.", parse_mode="Markdown")
         else:
-            await update.message.reply_text("❌ அந்தப் படம் கிடைக்கலை. சரியான பழைய பெயர் கொடுக்கவும்.") # இதுவே உங்களுக்கு வரும் பதில்
+            await update.message.reply_text("❌ அந்தப் படம் கிடைக்கலை. சரியான பழைய பெயர் கொடுக்கவும்.")
     except Exception as e:
         logging.error(f"Title update error: {e}")
         await update.message.reply_text("❌ Title update செய்ய முடியவில்லை.")
@@ -471,15 +471,16 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Usage: `/deletemovie <movie name>`", parse_mode="Markdown")
         return
 
-    title = " ".join(args).strip().lower()
+    title_raw = " ".join(args).strip()
+    title_to_delete = clean_title(title_raw).lower() # Clean and lower for comparison
 
     try:
-        supabase.table("movies").delete().eq("title", title).execute()
+        response = supabase.table("movies").delete().eq("title", title_to_delete).execute()
 
-        if supabase:
+        if response.data: # Supabase client returns data if delete was successful
             global movies_data
             movies_data = load_movies_data()
-            await update.message.reply_text(f"✅ *{title.title()}* படத்தை delete பண்ணிட்டேன்.", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ *{title_raw.title()}* படத்தை delete பண்ணிட்டேன்.", parse_mode="Markdown")
         else:
             await update.message.reply_text("❌ அந்தப் படம் கிடைக்கலை. சரியான பெயர் கொடுக்கவும்.")
     except Exception as e:
@@ -487,10 +488,9 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ DB-இல் இருந்து delete பண்ண முடியலை.")
 
 # --- Pagination helpers ---
-# Assuming get_total_movies_count also has an order by clause
 def get_total_movies_count():
     try:
-        response = supabase.table("movies").select("id", count="exact").execute() # order might not be here
+        response = supabase.table("movies").select("id", count="exact").execute()
         return response.count if response.count is not None else 0
     except Exception as e:
         logging.error(f"Error getting total movie count: {e}")
@@ -508,7 +508,6 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ இந்த command admins மட்டுமே பயன்படுத்த முடியும்")
         return
 
-    # இந்தப் புதிய Logging வரிகளைச் சேர்க்கவும்
     logging.info(f"User {user_id} requested /movielist command.") 
 
     page = 1
@@ -527,7 +526,6 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_movies = get_total_movies_count()
     total_pages = (total_movies + limit - 1) // limit
 
-    # இந்தப் புதிய Logging வரிகளைச் சேர்க்கவும்
     logging.info(f"Movielist details - Page: {page}, Offset: {offset}, Total Movies: {total_movies}, Total Pages: {total_pages}, Movies on page: {len(movies)}")
 
     if not movies:
@@ -547,7 +545,7 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await update.message.reply_text(text, reply_markup=reply_markup)
 
-# movielist pagination callback - இதை மாற்ற வேண்டாம், இதுவும் சரியான குறியீடுதான்
+# movielist pagination callback
 async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -599,7 +597,7 @@ async def main():
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
-    app.add_handler(CommandHandler("movielist", movielist)) # <-- இது இங்கே உள்ளது
+    app.add_handler(CommandHandler("movielist", movielist))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("adminpanel", admin_panel))
     app.add_handler(CommandHandler("addadmin", add_admin))
@@ -610,7 +608,7 @@ async def main():
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
 
     # Movie search text handler
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie)) # <-- இது முக்கியம்
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
     # Callback handlers
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res_"))
