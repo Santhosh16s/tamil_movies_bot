@@ -22,7 +22,7 @@ from telegram.ext import (
     ContextTypes,
 )
 from rapidfuzz import process
-
+from urllib.parse import quote
 
 
 load_dotenv()
@@ -322,8 +322,9 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = supabase.table("movies").select("id", count="exact").execute()
         total_movies = response.count or 0
 
-        response2 = supabase.rpc("get_movies_table_size").execute()  # Optional, or skip if no such RPC
-        db_size_mb = round(response2.data[0]['size_bytes'] / (1024*1024), 2) if response2.data else 0
+        # response2 = supabase.rpc("get_movies_table_size").execute() # இந்த வரியை கமெண்ட் செய்யவும்
+        # db_size_mb = round(response2.data[0]['size_bytes'] / (1024*1024), 2) if response2.data else 0 # இந்த வரியையும் கமெண்ட் செய்யவும்
+        db_size_mb = "கணக்கிட முடியவில்லை" # அல்லது நீங்கள் "N/A" (Not Available) என்றும் கொடுக்கலாம்
 
         last_movie_resp = supabase.table("movies").select("title", "uploaded_at").order("id", desc=True).limit(1).execute()
         last = last_movie_resp.data[0] if last_movie_resp.data else None
