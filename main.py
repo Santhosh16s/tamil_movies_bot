@@ -462,12 +462,17 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ DB-இல் இருந்து delete பண்ண முடியலை.")
 
 # --- Pagination helpers ---
+# Assuming get_total_movies_count also has an order by clause
 def get_total_movies_count():
-    response = supabase.table("movies").select("id", count="exact").execute()
-    return response.count or 0
+    try:
+        response = supabase.table("movies").select("id", count="exact").execute() # order might not be here
+        return response.count if response.count is not None else 0
+    except Exception as e:
+        logging.error(f"Error getting total movie count: {e}")
+        return 0
 
 def load_movies_page(limit=20, offset=0):
-    response = supabase.table("movies").select("title").order("title", ascending=True).range(offset, offset + limit - 1).execute()
+    response = supabase.table("movies").select("title").order("title", desc=False).range(offset, offset + limit - 1).execute()
     movies = response.data or []
     return [m['title'] for m in movies]
 
