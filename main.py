@@ -8,8 +8,7 @@ import os
 from functools import wraps
 from supabase.client import create_client, Client
 from datetime import datetime
-import telegram # இந்த வரி முக்கியம்!
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message, User # User ஐ இங்கு சேர்க்கவும்
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -207,7 +206,8 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
         await message.reply_text("⚠️ போஸ்டர் அனுப்ப முடியவில்லை.")
 
 # --- User Tracking Logic (reusable function) ---
-async def track_user(user: telegram.User):
+# --- User Tracking Logic (reusable function) ---
+async def track_user(user: User): # இங்கு 'telegram.User' ஐ 'User' ஆக மாற்றவும்
     """User-ஐ Database-இல் பதிவு செய்கிறது அல்லது ஏற்கனவே இருந்தால் லாக் செய்கிறது."""
     user_id = user.id
     try:
@@ -250,7 +250,7 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
 
     # இந்த Handler எந்தப் பதிலும் அனுப்பாது அல்லது Update-ஐ உட்கொள்ளாது.
     # இது மற்ற Handler-கள் வழக்கம்போல் செயல்பட அனுமதிக்கும்.
-
+    
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/start கட்டளைக்கு பதிலளிக்கிறது."""
