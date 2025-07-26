@@ -230,6 +230,7 @@ async def track_user(user: telegram.User):
 
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
+# --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     அனைத்து User Update-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது.
@@ -237,7 +238,10 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
     """
     # effective_user இருக்கிறதா என்று சரிபார்க்கவும்
     if update.effective_user:
-        logging.info(f"General tracker processing update from user: {update.effective_user.id}. Update type: {update.effective_update.effective_message.content_type if update.effective_update.effective_message else 'Callback/Other'}.")
+        # 'effective_update' என்பதற்குப் பதிலாக 'effective_message' ஐ நேரடியாகப் பயன்படுத்தவும்
+        # content_type ஐப் பெற, update.effective_message ஐப் பயன்படுத்தவும்.
+        content_type = update.effective_message.content_type if update.effective_message else 'Callback/Other'
+        logging.info(f"General tracker processing update from user: {update.effective_user.id}. Update type: {content_type}.")
         await track_user(update.effective_user)
     else:
         logging.info(f"Received update without effective_user. Update ID: {update.update_id}. This update will not register a user.")
