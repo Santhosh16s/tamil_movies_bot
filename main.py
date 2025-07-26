@@ -235,6 +235,7 @@ async def track_user(user: telegram.User):
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
+# --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     அனைத்து User Update-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது.
@@ -248,6 +249,8 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
         # Debugging log: update.effective_message இன் வகையை அச்சிடவும்
         if update.effective_message:
             logging.info(f"DEBUG: Type of update.effective_message: {type(update.effective_message)}")
+            # புதிய Debugging log: update.effective_message இன் அனைத்து attributes ஐயும் அச்சிடவும்
+            logging.info(f"DEBUG: Attributes of update.effective_message: {dir(update.effective_message)}")
             # content_type ஐ பாதுகாப்பாக அணுகவும்
             if hasattr(update.effective_message, 'content_type'):
                 log_update_type = update.effective_message.content_type
@@ -273,6 +276,7 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
 
     # இந்த Handler எந்தப் பதிலும் அனுப்பாது அல்லது Update-ஐ உட்கொள்ளாது.
     # இது மற்ற Handler-கள் வழக்கம்போல் செயல்பட அனுமதிக்கும்.
+
     
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
