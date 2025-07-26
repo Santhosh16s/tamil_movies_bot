@@ -232,6 +232,7 @@ async def track_user(user: telegram.User):
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
+# --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     அனைத்து User Update-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது.
@@ -241,9 +242,8 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
     if update.effective_user:
         # லாகிங்கிற்கான Update வகையை பாதுகாப்பாக தீர்மானிக்கவும்
         log_update_type = "Unknown"
-        if update.message:
-            # update.message என்பது ஒரு Message object, அதற்கு content_type இருக்கும்
-            log_update_type = update.message.content_type
+        if update.effective_message: # effective_message இருக்கிறதா என்று சரிபார்க்கவும்
+            log_update_type = update.effective_message.content_type
         elif update.callback_query:
             log_update_type = "CallbackQuery"
         elif update.inline_query:
