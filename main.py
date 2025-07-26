@@ -443,6 +443,7 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /edittitle command ---
 @restricted
 async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """திரைப்படத் தலைப்பை மாற்றுகிறது."""
     args = context.args
     logging.info(f"Edittitle args: {args}")
     if len(args) < 1 or "|" not in " ".join(args):
@@ -455,16 +456,20 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cleaned_old_title = clean_title(old_title_raw)
     cleaned_new_title = clean_title(new_title_raw)
 
-    logging.info(f"Edittitle parsed - Old Cleaned: '{cleaned_old_title}', New Cleaned: '{cleaned_new_title}'")
+    logging.info(f"Edittitle parsed - Old Cleaned: '{cleaned_old_title}' (Raw: '{old_title_raw}'), New Cleaned: '{cleaned_new_title}' (Raw: '{new_title_raw}')") # கூடுதல் லாக்
 
     try:
         response = supabase.table("movies").update({"title": cleaned_new_title}).eq("title", cleaned_old_title).execute()
+        
+        logging.info(f"Supabase update response data: {response.data}") # Supabase-இன் நேரடிப் பதிலை லாக் செய்யவும்
+        logging.info(f"Supabase update response error: {response.error}") # ஏதேனும் பிழை இருந்தால் லாக் செய்யவும்
 
         if response.data:
             global movies_data
             movies_data = load_movies_data()
             await update.message.reply_text(f"✅ *{old_title_raw.title()}* இன் தலைப்பு, *{new_title_raw.title()}* ஆக மாற்றப்பட்டது.", parse_mode="Markdown")
         else:
+            # response.data காலியாக இருந்தால், அது பொருந்தவில்லை என்று அர்த்தம்
             await update.message.reply_text("❌ அந்தப் படம் கிடைக்கவில்லை. சரியான பழைய பெயர் கொடுக்கவும்.")
     except Exception as e:
         logging.error(f"❌ தலைப்பு புதுப்பிப்பு பிழை: {e}")
@@ -473,6 +478,7 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /deletemovie command ---
 @restricted
 async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """திரைப்படத்தை டேட்டாபேஸில் இருந்து நீக்குகிறது."""
     args = context.args
     if not args:
         await update.message.reply_text("⚠️ Usage: `/deletemovie <movie name>`", parse_mode="Markdown")
@@ -481,17 +487,21 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     title_raw = " ".join(args).strip()
     title_to_delete_cleaned = clean_title(title_raw)
 
-    logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}'")
+    logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}' (Raw: '{title_raw}')") # கூடுதல் லாக்
 
     try:
         response = supabase.table("movies").delete().eq("title", title_to_delete_cleaned).execute()
+        
+        logging.info(f"Supabase delete response data: {response.data}") # Supabase-இன் நேரடிப் பதிலை லாக் செய்யவும்
+        logging.info(f"Supabase delete response error: {response.error}") # ஏதேனும் பிழை இருந்தால் லாக் செய்யவும்
 
-        if response.data:
+        if response.data: # Supabase client returns data if delete was successful
             global movies_data
             movies_data = load_movies_data()
             await update.message.reply_text(f"✅ *{title_raw.title()}* படத்தை நீக்கிவிட்டேன்.", parse_mode="Markdown")
         else:
-            await update.message.reply_text("❌ அந்தப் படம் கிடைக்கவில்லை. சரியான பெயர் கொடுக்கவும்.")
+            # response.data காலியாக இருந்தால், அது பொருந்தவில்லை என்று அர்த்தம்
+            await update.reply_text("❌ அந்தப் படம் கிடைக்கவில்லை. சரியான பெயர் கொடுக்கவும்.")
     except Exception as e:
         logging.error(f"❌ நீக்குதல் பிழை: {e}")
         await update.message.reply_text("❌ DB-இல் இருந்து நீக்க முடியவில்லை.")
