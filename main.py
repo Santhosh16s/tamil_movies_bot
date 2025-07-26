@@ -229,6 +229,7 @@ async def track_user(user: telegram.User):
         logging.error(f"❌ User பதிவு செய்யும் பிழை: {e}")
 
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
+# --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     அனைத்து User Update-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது.
@@ -236,12 +237,10 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
     """
     # effective_user இருக்கிறதா என்று சரிபார்க்கவும்
     if update.effective_user:
+        logging.info(f"General tracker processing update from user: {update.effective_user.id}. Update type: {update.effective_update.effective_message.content_type if update.effective_update.effective_message else 'Callback/Other'}.")
         await track_user(update.effective_user)
     else:
-        # effective_user இல்லாத Update-களை லாக் செய்யவும் (பயனரற்ற Update-கள் போன்றவை)
-        logging.info(f"Received update without effective_user. Update ID: {update.update_id}")
-        # மேலும் விவரங்களுக்கு: update.effective_update.effective_message.content_type
-        # அல்லது update.callback_query, update.channel_post போன்றவற்றைச் சரிபார்க்கலாம்.
+        logging.info(f"Received update without effective_user. Update ID: {update.update_id}. This update will not register a user.")
 
     # இந்த Handler எந்தப் பதிலும் அனுப்பாது அல்லது Update-ஐ உட்கொள்ளாது.
     # இது மற்ற Handler-கள் வழக்கம்போல் செயல்பட அனுமதிக்கும்.
@@ -676,6 +675,7 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Main function to setup bot ---
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED_MESSAGE, general_message_tracker))
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("totalusers", total_users_command))
