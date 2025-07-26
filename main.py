@@ -145,7 +145,7 @@ def time_diff(past_time: datetime) -> str:
 
 # --- Delete messages after 10 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    await asyncio.sleep(20)
+    await asyncio.sleep(600)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         logging.info(f"Message {message_id} in chat {chat_id} deleted after delay.")
@@ -201,47 +201,8 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
 
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/start கட்டளைக்கு பதிலளிக்கிறது மற்றும் User-ஐ Database-இல் பதிவு செய்கிறது."""
-    user = update.effective_user
-    user_id = user.id
-
-    try:
-        # User ஏற்கனவே Database-இல் இருக்கிறாரா என்று சரிபார்க்கவும்
-        response = supabase.table("users").select("user_id").eq("user_id", user_id).limit(1).execute()
-        
-        if not response.data: # User Database-இல் இல்லை என்றால், அதைச் சேர்க்கவும்
-            user_data = {
-                "user_id": user_id,
-                "username": user.username,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
-                "joined_at": datetime.utcnow().isoformat()
-            }
-            insert_response = supabase.table("users").insert(user_data).execute()
-            if insert_response.data:
-                logging.info(f"✅ புதிய User பதிவு செய்யப்பட்டது: {user_id}")
-            else:
-                logging.error(f"❌ User பதிவு செய்ய முடியவில்லை: {user_id}, Error: {insert_response.error}")
-        else:
-            logging.info(f"User {user_id} ஏற்கனவே பதிவு செய்யப்பட்டுள்ளது.")
-
-    except Exception as e:
-        logging.error(f"❌ User பதிவு செய்யும் பிழை: {e}")
-
     await update.message.reply_text("🎬 தயவுசெய்து திரைப்படத்தின் பெயரை அனுப்புங்கள்!")
 
-# --- /totalusers command ---
-@restricted # Admins மட்டுமே பார்க்க முடியும்
-async def total_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """பதிவு செய்யப்பட்ட மொத்த User-களின் எண்ணிக்கையைக் காட்டுகிறது."""
-    try:
-        response = supabase.table("users").select("user_id", count="exact").execute()
-        total_users = response.count or 0
-        await update.message.reply_text(f"📊 மொத்த பதிவு செய்யப்பட்ட User-கள்: {total_users}")
-    except Exception as e:
-        logging.error(f"❌ மொத்த User-களைப் பெற பிழை: {e}")
-        await update.message.reply_text("❌ User எண்ணிக்கையைப் பெற முடியவில்லை.")
-        
 # --- /addmovie command ---
 @restricted
 async def addmovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -482,7 +443,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /edittitle command ---
 @restricted
 async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """திரைப்படத் தலைப்பை மாற்றுகிறது."""
     args = context.args
     logging.info(f"Edittitle args: {args}")
     if len(args) < 1 or "|" not in " ".join(args):
@@ -495,17 +455,10 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cleaned_old_title = clean_title(old_title_raw)
     cleaned_new_title = clean_title(new_title_raw)
 
-    logging.info(f"Edittitle parsed - Old Cleaned: '{cleaned_old_title}' (Raw: '{old_title_raw}'), New Cleaned: '{cleaned_new_title}' (Raw: '{new_title_raw}')")
+    logging.info(f"Edittitle parsed - Old Cleaned: '{cleaned_old_title}', New Cleaned: '{cleaned_new_title}'")
 
     try:
         response = supabase.table("movies").update({"title": cleaned_new_title}).eq("title", cleaned_old_title).execute()
-        
-        logging.info(f"Supabase update response data: {response.data}")
-        # response.error ஐ response.postgrest_error ஆக மாற்றப்பட்டது
-        if response.postgrest_error:
-            logging.error(f"Supabase update PostgREST error: {response.postgrest_error}")
-        else:
-            logging.info("Supabase update operation completed without PostgREST error.")
 
         if response.data:
             global movies_data
@@ -520,7 +473,6 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /deletemovie command ---
 @restricted
 async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """திரைப்படத்தை டேட்டாபேஸில் இருந்து நீக்குகிறது."""
     args = context.args
     if not args:
         await update.message.reply_text("⚠️ Usage: `/deletemovie <movie name>`", parse_mode="Markdown")
@@ -529,24 +481,16 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     title_raw = " ".join(args).strip()
     title_to_delete_cleaned = clean_title(title_raw)
 
-    logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}' (Raw: '{title_raw}')")
+    logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}'")
 
     try:
         response = supabase.table("movies").delete().eq("title", title_to_delete_cleaned).execute()
-        
-        logging.info(f"Supabase delete response data: {response.data}")
-        # response.error ஐ response.postgrest_error ஆக மாற்றப்பட்டது
-        if response.postgrest_error:
-            logging.error(f"Supabase delete PostgREST error: {response.postgrest_error}")
-        else:
-            logging.info("Supabase delete operation completed without PostgREST error.")
 
-        if response.data: # Supabase client data-வை திருப்பினால், delete வெற்றிகரமானது
+        if response.data:
             global movies_data
             movies_data = load_movies_data()
             await update.message.reply_text(f"✅ *{title_raw.title()}* படத்தை நீக்கிவிட்டேன்.", parse_mode="Markdown")
         else:
-            # response.data காலியாக இருந்தால், அது பொருந்தவில்லை என்று அர்த்தம்
             await update.message.reply_text("❌ அந்தப் படம் கிடைக்கவில்லை. சரியான பெயர் கொடுக்கவும்.")
     except Exception as e:
         logging.error(f"❌ நீக்குதல் பிழை: {e}")
@@ -656,7 +600,6 @@ async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
