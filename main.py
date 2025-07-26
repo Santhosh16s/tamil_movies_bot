@@ -231,6 +231,7 @@ async def track_user(user: telegram.User):
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
+# --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     அனைத்து User Update-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது.
@@ -238,12 +239,27 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
     """
     # effective_user இருக்கிறதா என்று சரிபார்க்கவும்
     if update.effective_user:
-        # 'effective_update' என்பதற்குப் பதிலாக 'effective_message' ஐ நேரடியாகப் பயன்படுத்தவும்
-        # content_type ஐப் பெற, update.effective_message ஐப் பயன்படுத்தவும்.
-        content_type = update.effective_message.content_type if update.effective_message else 'Callback/Other'
-        logging.info(f"General tracker processing update from user: {update.effective_user.id}. Update type: {content_type}.")
+        # லாகிங்கிற்கான Update வகையை பாதுகாப்பாக தீர்மானிக்கவும்
+        log_update_type = "Unknown"
+        if update.message:
+            # update.message என்பது ஒரு Message object, அதற்கு content_type இருக்கும்
+            log_update_type = update.message.content_type
+        elif update.callback_query:
+            log_update_type = "CallbackQuery"
+        elif update.inline_query:
+            log_update_type = "InlineQuery"
+        elif update.chosen_inline_result:
+            log_update_type = "ChosenInlineResult"
+        elif update.channel_post:
+            log_update_type = "ChannelPost"
+        elif update.edited_channel_post:
+            log_update_type = "EditedChannelPost"
+        # நீங்கள் பிற Update வகைகளையும் இங்கு சேர்க்கலாம்
+
+        logging.info(f"General tracker processing update from user: {update.effective_user.id}. Update type: {log_update_type}.")
         await track_user(update.effective_user)
     else:
+        # effective_user இல்லாத Update-களை லாக் செய்யவும் (பயனரற்ற Update-கள் போன்றவை)
         logging.info(f"Received update without effective_user. Update ID: {update.update_id}. This update will not register a user.")
 
     # இந்த Handler எந்தப் பதிலும் அனுப்பாது அல்லது Update-ஐ உட்கொள்ளாது.
