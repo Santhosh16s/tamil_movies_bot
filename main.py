@@ -145,7 +145,7 @@ def time_diff(past_time: datetime) -> str:
 
 # --- Delete messages after 10 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    await asyncio.sleep(600)
+    await asyncio.sleep(20)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         logging.info(f"Message {message_id} in chat {chat_id} deleted after delay.")
@@ -337,6 +337,9 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
             )
 
             await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
+            
+            # இந்த வரியை அன்கமெண்ட் செய்யப்பட்டுள்ளது!
+            asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
 
         else:
             await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
@@ -620,3 +623,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
+    
