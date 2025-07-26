@@ -234,9 +234,20 @@ async def track_user(user: telegram.User):
 
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """அனைத்து User Message-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது."""
-    if update.effective_user: # ஒரு User Update-ஐக் கொண்டிருந்தால் மட்டுமே பதிவு செய்யவும்
+    """
+    அனைத்து User Message-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது.
+    effective_user இல்லாத Update-களை கையாளுகிறது.
+    """
+    # effective_user இருக்கிறதா என்று சரிபார்க்கவும்
+    if update.effective_user:
         await track_user(update.effective_user)
+    else:
+        # effective_user இல்லாத Update-களை லாக் செய்யவும் (பயனரற்ற Update-கள் போன்றவை)
+        # இது ஒரு பிழை அல்ல, ஆனால் நாம் ஏன் User-ஐப் பதிவு செய்யவில்லை என்பதைக் காட்டுகிறது.
+        logging.info(f"Received update without effective_user. Update ID: {update.update_id}")
+        # மேலும் விவரங்களுக்கு: update.effective_update.effective_message.content_type
+        # அல்லது update.callback_query, update.channel_post போன்றவற்றைச் சரிபார்க்கலாம்.
+
     # இந்த Handler எந்தப் பதிலும் அனுப்பாது அல்லது Update-ஐ உட்கொள்ளாது.
     # இது மற்ற Handler-கள் வழக்கம்போல் செயல்பட அனுமதிக்கும்.
 
@@ -652,7 +663,6 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}' (Raw: '{title_raw}')")
 
     try:
-        # நீக்க முயற்சிக்கும் முன், அந்தப் படம் டேட்டாபேஸில் உள்ளதா என்று சரிபார்க்கவும்
         check_response = supabase.table("movies").select("title").eq("title", title_to_delete_cleaned).execute()
         
         if not check_response.data:
