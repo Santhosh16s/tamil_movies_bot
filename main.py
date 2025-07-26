@@ -236,6 +236,7 @@ async def track_user(user: telegram.User):
 
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
+# --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     அனைத்து User Update-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது.
@@ -246,16 +247,34 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
         # லாகிங்கிற்கான Update வகையை பாதுகாப்பாக தீர்மானிக்கவும்
         log_update_type = "Unknown"
         
-        # Debugging log: update.effective_message இன் வகையை அச்சிடவும்
         if update.effective_message:
-            logging.info(f"DEBUG: Type of update.effective_message: {type(update.effective_message)}")
-            # புதிய Debugging log: update.effective_message இன் அனைத்து attributes ஐயும் அச்சிடவும்
-            logging.info(f"DEBUG: Attributes of update.effective_message: {dir(update.effective_message)}")
-            # content_type ஐ பாதுகாப்பாக அணுகவும்
-            if hasattr(update.effective_message, 'content_type'):
-                log_update_type = update.effective_message.content_type
+            # content_type ஐ நேரடியாக அணுக முடியாததால், Message object-இன் attributes ஐப் பயன்படுத்தி ஊகிக்கவும்
+            if update.effective_message.text:
+                log_update_type = "text"
+            elif update.effective_message.photo:
+                log_update_type = "photo"
+            elif update.effective_message.document:
+                log_update_type = "document"
+            elif update.effective_message.video:
+                log_update_type = "video"
+            elif update.effective_message.audio:
+                log_update_type = "audio"
+            elif update.effective_message.sticker:
+                log_update_type = "sticker"
+            elif update.effective_message.voice:
+                log_update_type = "voice"
+            elif update.effective_message.contact:
+                log_update_type = "contact"
+            elif update.effective_message.location:
+                log_update_type = "location"
+            elif update.effective_message.poll:
+                log_update_type = "poll"
+            elif update.effective_message.game:
+                log_update_type = "game"
+            # மேலும் பல content_type-கள் Telegram API இல் உள்ளன, தேவைப்பட்டால் சேர்க்கலாம்.
             else:
-                log_update_type = "Message (No Content Type)" # content_type இல்லாத Message object
+                log_update_type = "message_other" # Message object, ஆனால் content_type ஐ ஊகிக்க முடியவில்லை
+
         elif update.callback_query:
             log_update_type = "CallbackQuery"
         elif update.inline_query:
@@ -277,7 +296,21 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
     # இந்த Handler எந்தப் பதிலும் அனுப்பாது அல்லது Update-ஐ உட்கொள்ளாது.
     # இது மற்ற Handler-கள் வழக்கம்போல் செயல்பட அனுமதிக்கும்.
 
+# --- Error Handler ---
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a message to the user."""
+    logging.error(f"Exception while handling an update: {context.error}", exc_info=True)
     
+    # Send a generic error message to the user (optional, but good for user experience)
+    if isinstance(update, Update) and update.effective_chat:
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ ஒரு பிழை ஏற்பட்டது. தயவுசெய்து மீண்டும் முயற்சிக்கவும் அல்லது அட்மினைத் தொடர்பு கொள்ளவும்."
+            )
+        except Exception as e:
+            logging.error(f"Failed to send error message to user: {e}")
+            
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/start கட்டளைக்கு பதிலளிக்கிறது."""
@@ -706,12 +739,25 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sys.exit(0)
 
 # --- Main function to setup bot ---
+# --- Main function to setup bot ---
 async def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    """பாட்டைத் தொடங்கி, அனைத்து ஹேண்ட்லர்களையும் பதிவு செய்கிறது."""
+    # Network related settings added for stability
+    app = ApplicationBuilder().token(TOKEN)\
+        .http_version("1.1")\
+        .http_connection_pool_size(50)\
+        .read_timeout(30)\
+        .write_timeout(30)\
+        .connect_timeout(30)\
+        .build()
+
+    # பொதுவான Message Tracker ஐ முதலில் சேர்க்கவும்.
+    # இது அனைத்து User செயல்பாடுகளையும் (கட்டளைகள், Text, Photos, Callbacks) பதிவு செய்யும்.
+    # திருத்தப்பட்ட Message-களைத் தவிர்ப்பது, ஒரே Message-ஐ பலமுறை பதிவு செய்வதைத் தடுக்கும்.
     app.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED_MESSAGE, general_message_tracker))
 
+    # கட்டளைகளைப் பதிவு செய்யவும்
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
@@ -721,14 +767,21 @@ async def main():
     app.add_handler(CommandHandler("addadmin", add_admin))
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
+    app.add_handler(CommandHandler("totalusers", total_users_command))
 
+    # ஃபைல் பதிவேற்ற ஹேண்ட்லர்
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
+
+    # திரைப்படத் தேடல் டெக்ஸ்ட் ஹேண்ட்லர் (கட்டளைகள் தவிர்த்து)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
-    # Callback handlers (now using '|' as delimiter)
+    # Callback ஹேண்ட்லர்கள்
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
-    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_")) # No change here, movielist callback uses page number
+    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
+
+    # Error Handler ஐப் பதிவு செய்யவும் (அனைத்து பிழைகளையும் பிடிக்க)
+    app.add_error_handler(error_handler) # இந்த வரி முக்கியம்
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
