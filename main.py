@@ -217,18 +217,14 @@ async def track_user(user: telegram.User):
                 "first_name": user.first_name if user.first_name else None,
                 "last_name": user.last_name if user.last_name else None,
                 "joined_at": datetime.utcnow().isoformat(),
-                "message_count": 1 # புதிய பயனர், முதல் மெசேஜ்
+                "message_count": 0 # புதிய பயனர், முதல் மெசேஜ்
             }
             insert_response = supabase.table("users").insert(user_data).execute()
             if insert_response.data:
                 logging.info(f"✅ புதிய பயனர் பதிவு செய்யப்பட்டது: {user_id} (மெசேஜ் கவுண்ட்: 1)")
             else:
-                # இங்கே மாற்றம்: பிழையைச் சரிபார்க்க ஒரு பாதுகாப்பான வழி
-                error_details = "தெரியாத பிழை"
-                if hasattr(insert_response, 'postgrest_error') and insert_response.postgrest_error:
-                    error_details = insert_response.postgrest_error
-                elif hasattr(insert_response, 'error') and insert_response.error:
-                    error_details = insert_response.error
+                # இங்கே மாற்றம்: insert_response.error ஐ insert_response.postgrest_error ஆக மாற்றவும்
+                error_details = insert_response.postgrest_error if insert_response.postgrest_error else "தெரியாத பிழை"
                 logging.error(f"❌ பயனர் பதிவு செய்ய முடியவில்லை: {user_id}, பிழை: {error_details}")
         else: # பயனர் ஏற்கனவே Database-இல் இருந்தால், message_count-ஐ அதிகரிக்கவும்
             current_message_count = response.data[0].get("message_count", 0) # message_count இல்லை என்றால் 0
@@ -238,18 +234,13 @@ async def track_user(user: telegram.User):
             if update_response.data:
                 logging.info(f"பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்கப்பட்டது: {new_message_count}")
             else:
-                # இங்கே மாற்றம்: பிழையைச் சரிபார்க்க ஒரு பாதுகாப்பான வழி
-                error_details = "தெரியாத பிழை"
-                if hasattr(update_response, 'postgrest_error') and update_response.postgrest_error:
-                    error_details = update_response.postgrest_error
-                elif hasattr(update_response, 'error') and update_response.error:
-                    error_details = update_response.error
+                # இங்கே மாற்றம்: update_response.error ஐ update_response.postgrest_error ஆக மாற்றவும்
+                error_details = update_response.postgrest_error if update_response.postgrest_error else "தெரியாத பிழை"
                 logging.error(f"❌ பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்க முடியவில்லை: {error_details}")
 
     except Exception as e:
-        # இந்த பொதுவான exception catcher ஐ மேலும் குறிப்பிட்டதாக மாற்றினால் நல்லது
         logging.error(f"❌ பயனர் பதிவு அல்லது புதுப்பித்தல் பிழை: {e}")
-        
+
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
 # --- General Message Tracker (அனைத்து பயனர் செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -722,9 +713,8 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # கமெண்ட் ஹேண்டலர்களைச் சேர்க்கவும்
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("totalusers", total_users_command))
+    app.add_handler(CommandHandler("totalusers", total_users_command)) # இது ஏற்கனவே சேர்க்கப்பட்டுள்ளது!
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
@@ -735,25 +725,15 @@ async def main():
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
 
-    # பொதுவான மெசேஜ் டிராக்கரை மற்ற மெசேஜ் ஹேண்டலர்களுக்கு முன்னதாக சேர்க்கவும்.
-    # group ஆர்கியுமென்ட் add_handler ஃபங்ஷனுக்குத் தரப்பட வேண்டும், MessageHandler கன்ஸ்ட்ரக்டருக்கு அல்ல.
-    # group=-2 என்று கொடுக்கலாம், இது பெரும்பாலான ஹேண்டலர்களை விட முன்னதாக செயல்படுத்தப்படும்.
-    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), group=-2)
+    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1) # குறைந்த முன்னுரிமையுடன் சேர்க்கப்பட்டுள்ளது
 
-    # குறிப்பிட்ட மெசேஜ் ஹேண்டலர்கள்.
-    # இவற்றுக்கு group=0 (default) அல்லது group=-1 என்று கொடுக்கலாம்,
-    # இது general_message_tracker-க்கு பிறகு செயல்படும்.
-    # முன்பு நீங்கள் group=-1 ஐ general_message_tracker-க்கு பயன்படுத்தியதால்,
-    # அதை மற்ற ஹேண்டலர்களுக்கு கொடுக்கலாம் அல்லது group ஆர்கியுமென்ட்டையே நீக்கலாம்.
-    # group ஆர்கியுமென்ட்டை நீக்கினால், அவை default group 0 இல் சேரும்.
-    # நாம் இப்போது default group 0 இல் சேர்க்கிறோம்.
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file)) # group ஆர்கியுமென்ட்டை நீக்கிவிட்டேன்
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))     # group ஆர்கியுமென்ட்டை நீக்கிவிட்டேன்
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
-    # Callback handlers (இவற்றில் group ஆர்கியுமென்ட் தேவையில்லை, ஏனெனில் அவை MessageHandler அல்ல)
+    # Callback handlers (now using '|' as delimiter)
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
-    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
+    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_")) # No change here, movielist callback uses page number
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
