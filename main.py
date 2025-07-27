@@ -119,7 +119,13 @@ def save_movie_to_db(title: str, poster_id: str, file_ids: list) -> bool:
             logging.info(f"✅ திரைப்படம் '{cleaned_title_for_db}' Supabase-ல் சேமிக்கப்பட்டது.")
             return True
         else:
-            logging.error(f"❌ Supabase Insert தோல்வியடைந்தது, தரவு இல்லை: {response.status_code}")
+            # *** இங்கேதான் மாற்றம் செய்ய வேண்டும் ***
+            error_details = "தெரியாத பிழை - டேட்டா இல்லை"
+            if hasattr(response, 'postgrest_error') and response.postgrest_error:
+                error_details = response.postgrest_error
+            elif hasattr(response, 'error') and response.error:
+                error_details = response.error
+            logging.error(f"❌ Supabase Insert தோல்வியடைந்தது, பிழை: {error_details}")
             return False
     except Exception as e:
         logging.error(f"❌ Supabase Insert பிழை: {e}")
@@ -211,8 +217,25 @@ async def track_user(user: telegram.User):
         response = supabase.table("users").select("user_id, message_count").eq("user_id", user_id).limit(1).execute()
 
         if not response.data: # பயனர் Database-இல் இல்லை என்றால், அதைச் சேர்க்கவும்
-            # ... (Existing code for new user)
-            pass
+            user_data = {
+                "user_id": user_id,
+                "username": user.username if user.username else None,
+                "first_name": user.first_name if user.first_name else None,
+                "last_name": user.last_name if user.last_name else None,
+                "joined_at": datetime.utcnow().isoformat(),
+                "message_count": 0 # புதிய பயனர், முதல் மெசேஜ்
+            }
+            insert_response = supabase.table("users").insert(user_data).execute()
+            if insert_response.data:
+                logging.info(f"✅ புதிய பயனர் பதிவு செய்யப்பட்டது: {user_id} (மெசேஜ் கவுண்ட்: 1)")
+            else:
+                # *** இங்கேதான் மாற்றம் செய்ய வேண்டும் ***
+                error_details = "தெரியாத பிழை"
+                if hasattr(insert_response, 'postgrest_error') and insert_response.postgrest_error:
+                    error_details = insert_response.postgrest_error
+                elif hasattr(insert_response, 'error') and insert_response.error:
+                    error_details = insert_response.error
+                logging.error(f"❌ பயனர் பதிவு செய்ய முடியவில்லை: {user_id}, பிழை: {error_details}")
         else: # பயனர் ஏற்கனவே Database-இல் இருந்தால், message_count-ஐ அதிகரிக்கவும்
             current_message_count = response.data[0].get("message_count", 0) # message_count இல்லை என்றால் 0
             new_message_count = current_message_count + 1
@@ -221,7 +244,12 @@ async def track_user(user: telegram.User):
             if update_response.data:
                 logging.info(f"பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்கப்பட்டது: {new_message_count}")
             else:
-                error_details = update_response.postgrest_error if update_response.postgrest_error else "தெரியாத பிழை"
+                # *** இங்கேதான் மாற்றம் செய்ய வேண்டும் ***
+                error_details = "தெரியாத பிழை"
+                if hasattr(update_response, 'postgrest_error') and update_response.postgrest_error:
+                    error_details = update_response.postgrest_error
+                elif hasattr(update_response, 'error') and update_response.error:
+                    error_details = update_response.error
                 logging.error(f"❌ பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்க முடியவில்லை: {error_details}")
 
     except Exception as e:
@@ -545,9 +573,11 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = supabase.table("movies").update({"title": cleaned_new_title}).eq("title", cleaned_old_title).execute()
         
         logging.info(f"Supabase update response data: {response.data}")
-        # response.error ஐ response.postgrest_error ஆக மாற்றப்பட்டது
-        if response.postgrest_error:
+        # *** இங்கேதான் மாற்றம் செய்ய வேண்டும் ***
+        if hasattr(response, 'postgrest_error') and response.postgrest_error:
             logging.error(f"Supabase update PostgREST error: {response.postgrest_error}")
+        elif hasattr(response, 'error') and response.error:
+            logging.error(f"Supabase update error (old format): {response.error}")
         else:
             logging.info("Supabase update operation completed without PostgREST error.")
 
@@ -569,22 +599,19 @@ async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not args:
         await update.message.reply_text("⚠️ Usage: `/deletemovie <movie name>`", parse_mode="Markdown")
         return
-
     title_raw = " ".join(args).strip()
     title_to_delete_cleaned = clean_title(title_raw)
-
     logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}' (Raw: '{title_raw}')")
-
     try:
         response = supabase.table("movies").delete().eq("title", title_to_delete_cleaned).execute()
-        
         logging.info(f"Supabase delete response data: {response.data}")
-        # response.error ஐ response.postgrest_error ஆக மாற்றப்பட்டது
-        if response.postgrest_error:
+        # *** இங்கேதான் மாற்றம் செய்ய வேண்டும் ***
+        if hasattr(response, 'postgrest_error') and response.postgrest_error:
             logging.error(f"Supabase delete PostgREST error: {response.postgrest_error}")
+        elif hasattr(response, 'error') and response.error:
+            logging.error(f"Supabase delete error (old format): {response.error}")
         else:
             logging.info("Supabase delete operation completed without PostgREST error.")
-
         if response.data: # Supabase client data-வை திருப்பினால், delete வெற்றிகரமானது
             global movies_data
             movies_data = load_movies_data()
