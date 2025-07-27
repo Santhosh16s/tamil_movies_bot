@@ -217,7 +217,7 @@ async def track_user(user: telegram.User):
                 "first_name": user.first_name if user.first_name else None,
                 "last_name": user.last_name if user.last_name else None,
                 "joined_at": datetime.utcnow().isoformat(),
-                "message_count": 1 # புதிய பயனர், முதல் மெசேஜ்
+                "message_count": 0 # புதிய பயனர், முதல் மெசேஜ்
             }
             insert_response = supabase.table("users").insert(user_data).execute()
             if insert_response.data:
