@@ -202,45 +202,56 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
 
 # --- User Tracking Logic (reusable function) ---
 # --- User Tracking Logic (reusable function) ---
+# --- User Tracking Logic (reusable function) ---
 async def track_user(user: telegram.User):
-    """User-ஐ Database-இல் பதிவு செய்கிறது அல்லது ஏற்கனவே இருந்தால் லாக் செய்கிறது."""
+    """பயனரை Database-இல் பதிவு செய்கிறது அல்லது ஏற்கனவே இருந்தால் லாக் செய்கிறது மற்றும் message_count-ஐ புதுப்பிக்கிறது."""
     user_id = user.id
     try:
-        response = supabase.table("users").select("user_id").eq("user_id", user_id).limit(1).execute()
+        # பயனரைத் தேர்ந்தெடுத்து, message_count-ஐயும் பெறவும்
+        response = supabase.table("users").select("user_id, message_count").eq("user_id", user_id).limit(1).execute()
         
-        if not response.data: # User Database-இல் இல்லை என்றால், அதைச் சேர்க்கவும்
+        if not response.data: # பயனர் Database-இல் இல்லை என்றால், அதைச் சேர்க்கவும்
             user_data = {
                 "user_id": user_id,
-                "username": user.username if user.username else None, # Username இல்லாத User-களையும் கையாளவும்
-                "first_name": user.first_name if user.first_name else None, # First Name இல்லாத User-களையும் கையாளவும்
-                "last_name": user.last_name if user.last_name else None, # Last Name இல்லாத User-களையும் கையாளவும்
-                "joined_at": datetime.utcnow().isoformat()
+                "username": user.username if user.username else None,
+                "first_name": user.first_name if user.first_name else None,
+                "last_name": user.last_name if user.last_name else None,
+                "joined_at": datetime.utcnow().isoformat(),
+                "message_count": 1 # புதிய பயனர், முதல் மெசேஜ்
             }
             insert_response = supabase.table("users").insert(user_data).execute()
             if insert_response.data:
-                logging.info(f"✅ புதிய User பதிவு செய்யப்பட்டது: {user_id}")
+                logging.info(f"✅ புதிய பயனர் பதிவு செய்யப்பட்டது: {user_id} (மெசேஜ் கவுண்ட்: 1)")
             else:
-                # insert_response.error ஐ சரிபார்க்கவும்
-                error_details = insert_response.error if insert_response.error else "Unknown error"
-                logging.error(f"❌ User பதிவு செய்ய முடியவில்லை: {user_id}, Error: {error_details}")
-        else:
-            logging.info(f"User {user_id} ஏற்கனவே பதிவு செய்யப்பட்டுள்ளது.")
+                error_details = insert_response.error if insert_response.error else "தெரியாத பிழை"
+                logging.error(f"❌ பயனர் பதிவு செய்ய முடியவில்லை: {user_id}, பிழை: {error_details}")
+        else: # பயனர் ஏற்கனவே Database-இல் இருந்தால், message_count-ஐ அதிகரிக்கவும்
+            current_message_count = response.data[0].get("message_count", 0) # message_count இல்லை என்றால் 0
+            new_message_count = current_message_count + 1
+            
+            update_response = supabase.table("users").update({"message_count": new_message_count}).eq("user_id", user_id).execute()
+            if update_response.data:
+                logging.info(f"பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்கப்பட்டது: {new_message_count}")
+            else:
+                error_details = update_response.error if update_response.error else "தெரியாத பிழை"
+                logging.error(f"❌ பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்க முடியவில்லை: {error_details}")
 
     except Exception as e:
-        logging.error(f"❌ User பதிவு செய்யும் பிழை: {e}")
+        logging.error(f"❌ பயனர் பதிவு அல்லது புதுப்பித்தல் பிழை: {e}")
 
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
+# --- General Message Tracker (அனைத்து பயனர் செயல்பாடுகளையும் பதிவு செய்ய) ---
 async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    அனைத்து User Update-களையும் (Commands, Text, Photos, Callbacks) பதிவு செய்கிறது.
-    effective_user இல்லாத Update-களை கையாளுகிறது.
+    அனைத்து பயனர் அப்டேட்களையும் (கமெண்ட்கள், டெக்ஸ்ட், போட்டோக்கள், கால்பேக்குகள்) பதிவு செய்கிறது
+    மற்றும் message_count-ஐ புதுப்பிக்கிறது.
     """
-    # effective_user இருக்கிறதா என்று சரிபார்க்கவும்
     if update.effective_user:
+        # இது Command, Text, Photo, Document, Callback Query என அனைத்தையும் உள்ளடக்கும்.
+        # எனவே, ஒவ்வொரு Interaction-க்கும் message_count அப்டேட் செய்யப்படும்.
         await track_user(update.effective_user)
     else:
-        # effective_user இல்லாத Update-களை லாக் செய்யவும் (பயனரற்ற Update-கள் போன்றவை)
-        logging.info(f"Received update without effective_user. Update ID: {update.update_id}")
+        logging.info(f"effective_user இல்லாத அப்டேட் பெறப்பட்டது. அப்டேட் ID: {update.update_id}")
 
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -274,16 +285,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎬 தயவுசெய்து திரைப்படத்தின் பெயரை அனுப்புங்கள்!")
 
 # --- /totalusers command ---
-@restricted # Admins மட்டுமே பார்க்க முடியும்
+@restricted # Admin-கள் மட்டுமே பார்க்க முடியும்
 async def total_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """பதிவு செய்யப்பட்ட மொத்த User-களின் எண்ணிக்கையைக் காட்டுகிறது."""
+    """பதிவு செய்யப்பட்ட மொத்த பயனர்களின் எண்ணிக்கையைக் காட்டுகிறது."""
     try:
+        # user_id-ஐ மட்டும் தேர்ந்தெடுத்து, count="exact" பயன்படுத்தி மொத்த எண்ணிக்கையைப் பெறவும்.
         response = supabase.table("users").select("user_id", count="exact").execute()
-        total_users = response.count or 0
-        await update.message.reply_text(f"📊 மொத்த பதிவு செய்யப்பட்ட User-கள்: {total_users}")
+        
+        total_users = response.count or 0 # மொத்த பயனர்களின் எண்ணிக்கை
+        
+        await update.message.reply_text(f"📊 மொத்த பதிவு செய்யப்பட்ட பயனர்கள்: {total_users}")
+        
     except Exception as e:
-        logging.error(f"❌ மொத்த User-களைப் பெற பிழை: {e}")
-        await update.message.reply_text("❌ User எண்ணிக்கையைப் பெற முடியவில்லை.")
+        logging.error(f"❌ மொத்த பயனர்களைப் பெற பிழை: {e}")
+        await update.message.reply_text("❌ பயனர் எண்ணிக்கையைப் பெற முடியவில்லை.")
         
 # --- /addmovie command ---
 @restricted
@@ -694,12 +709,12 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Koyeb மூலம்)...")
     sys.exit(0)
 
-# --- Main function to setup bot ---
+# --- பாட்டை அமைக்க முக்கிய ஃபங்ஷன் (Main function to setup bot) ---
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("totalusers", total_users_command)) # இது ஏற்கனவே சேர்க்கப்பட்டுள்ளது!
+    app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
@@ -710,15 +725,17 @@ async def main():
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
 
-    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1) # குறைந்த முன்னுரிமையுடன் சேர்க்கப்பட்டுள்ளது
+    # இது அனைத்து மெசேஜ் மற்றும் அப்டேட்களுக்கும் பயனரை Track செய்யும்
+    # ChatType.CHANNEL ஐ நீக்குவது முக்கியம், ஏனெனில் சேனல் போஸ்ட்கள் பயனர் தொடர்புகள் அல்ல.
+    app.add_handler(MessageHandler(filters.ALL & ~filters.ChatType.CHANNEL, general_message_tracker), -1) 
 
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
-    # Callback handlers (now using '|' as delimiter)
+    # Callback handlers (இப்போது '|' ஐப் பிரிப்பானாகப் பயன்படுத்துகிறோம்)
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
-    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_")) # No change here, movielist callback uses page number
+    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_")) 
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
