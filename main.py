@@ -211,21 +211,8 @@ async def track_user(user: telegram.User):
         response = supabase.table("users").select("user_id, message_count").eq("user_id", user_id).limit(1).execute()
 
         if not response.data: # பயனர் Database-இல் இல்லை என்றால், அதைச் சேர்க்கவும்
-            user_data = {
-                "user_id": user_id,
-                "username": user.username if user.username else None,
-                "first_name": user.first_name if user.first_name else None,
-                "last_name": user.last_name if user.last_name else None,
-                "joined_at": datetime.utcnow().isoformat(),
-                "message_count": 0 # புதிய பயனர், முதல் மெசேஜ்
-            }
-            insert_response = supabase.table("users").insert(user_data).execute()
-            if insert_response.data:
-                logging.info(f"✅ புதிய பயனர் பதிவு செய்யப்பட்டது: {user_id} (மெசேஜ் கவுண்ட்: 1)")
-            else:
-                # இங்கே மாற்றம்: insert_response.error ஐ insert_response.postgrest_error ஆக மாற்றவும்
-                error_details = insert_response.postgrest_error if insert_response.postgrest_error else "தெரியாத பிழை"
-                logging.error(f"❌ பயனர் பதிவு செய்ய முடியவில்லை: {user_id}, பிழை: {error_details}")
+            # ... (Existing code for new user)
+            pass
         else: # பயனர் ஏற்கனவே Database-இல் இருந்தால், message_count-ஐ அதிகரிக்கவும்
             current_message_count = response.data[0].get("message_count", 0) # message_count இல்லை என்றால் 0
             new_message_count = current_message_count + 1
@@ -234,7 +221,6 @@ async def track_user(user: telegram.User):
             if update_response.data:
                 logging.info(f"பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்கப்பட்டது: {new_message_count}")
             else:
-                # இங்கே மாற்றம்: update_response.error ஐ update_response.postgrest_error ஆக மாற்றவும்
                 error_details = update_response.postgrest_error if update_response.postgrest_error else "தெரியாத பிழை"
                 logging.error(f"❌ பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்க முடியவில்லை: {error_details}")
 
@@ -737,6 +723,5 @@ async def main():
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
-
 if __name__ == "__main__":
     asyncio.run(main())
