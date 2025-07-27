@@ -223,7 +223,8 @@ async def track_user(user: telegram.User):
             if insert_response.data:
                 logging.info(f"✅ புதிய பயனர் பதிவு செய்யப்பட்டது: {user_id} (மெசேஜ் கவுண்ட்: 1)")
             else:
-                error_details = insert_response.error if insert_response.error else "தெரியாத பிழை"
+                # இங்கே மாற்றம்: insert_response.error ஐ insert_response.postgrest_error ஆக மாற்றவும்
+                error_details = insert_response.postgrest_error if insert_response.postgrest_error else "தெரியாத பிழை"
                 logging.error(f"❌ பயனர் பதிவு செய்ய முடியவில்லை: {user_id}, பிழை: {error_details}")
         else: # பயனர் ஏற்கனவே Database-இல் இருந்தால், message_count-ஐ அதிகரிக்கவும்
             current_message_count = response.data[0].get("message_count", 0) # message_count இல்லை என்றால் 0
@@ -233,7 +234,8 @@ async def track_user(user: telegram.User):
             if update_response.data:
                 logging.info(f"பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்கப்பட்டது: {new_message_count}")
             else:
-                error_details = update_response.error if update_response.error else "தெரியாத பிழை"
+                # இங்கே மாற்றம்: update_response.error ஐ update_response.postgrest_error ஆக மாற்றவும்
+                error_details = update_response.postgrest_error if update_response.postgrest_error else "தெரியாத பிழை"
                 logging.error(f"❌ பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்க முடியவில்லை: {error_details}")
 
     except Exception as e:
