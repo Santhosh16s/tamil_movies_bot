@@ -722,17 +722,7 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # பொதுவான மெசேஜ் டிராக்கரை மற்ற மெசேஜ் ஹேண்டலர்களுக்கு முன் (அதிக முன்னுரிமையுடன்) சேர்க்கவும்.
-    # group=0 என்பது default. -1 அல்லது -2 போன்ற சிறிய எண் கொண்ட group-கள் முதலில் செயல்படுத்தப்படும்.
-    # நீங்கள் கொடுத்த குறியீட்டில் group=-1 உள்ளது. இது பொதுவாக சரியாகத்தான் இருக்கும்.
-    # இருப்பினும், சில நேரங்களில், Telegram Bot API யின் செயல்பாடு காரணமாக,
-    # filters.ALL ஆனது மற்ற குறிப்பிட்ட filter-களை விட பிந்தி செயல்படுத்தப்படலாம்.
-    # இதை சரிசெய்ய, group ஐ குறிப்பிடாமல், அது default group 0 இல் இருக்கட்டும்.
-    # அல்லது, இதை மிக முக்கியமான group ஆக மாற்ற -1 க்கு பதிலாக வேறு group பயன்படுத்தலாம்.
-    # இப்போது நான் group-ஐ அகற்றுகிறேன், இதனால் அது default group 0 இல் சேர்க்கப்படும்.
-    # மேலும், இது மற்ற மெசேஜ் ஹேண்டலர்களுக்கு முன்னதாக சேர்க்கப்பட வேண்டும்.
-    
-    # முதலில் கமெண்ட் ஹேண்டலர்களைச் சேர்க்கவும்
+    # கமெண்ட் ஹேண்டலர்களைச் சேர்க்கவும்
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
@@ -745,30 +735,22 @@ async def main():
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
 
-    # பொதுவான மெசேஜ் டிராக்கரை மற்ற குறிப்பிட்ட MessageHandlers-க்கு முன்னதாக சேர்க்கவும்.
-    # group=0 என்பது default.
-    # ensure_tracked=True என ஒரு வாதம் இருந்தால், அது மற்ற ஹேண்டலர்களுக்குப் பிறகும்
-    # இந்த ஹேண்டலரை செயல்பட வைக்கும். ஆனால், அது ஒரு பொதுவான அட்ரிபியூட் அல்ல.
-    # அதற்கு பதிலாக, group ஐ பயன்படுத்துவது சிறந்தது.
-    # ஒருவேளை, group argument ஐ முழுவதுமாக அகற்றிவிட்டு, default group (0) இல் இருக்கட்டும்.
-    # இது சில சமயம் மற்ற ஹேண்டலர்களுக்கு முன்னதாக செயல்படலாம்.
-    # இல்லையெனில், ஒரு higher positive group (எ.கா., group=1) கொடுத்து,
-    # மற்ற மெசேஜ் ஹேண்டலர்களுக்கு group=2 கொடுக்கலாம்.
-    
-    # இப்போது, உங்கள் குறியீட்டில் உள்ள அதே அமைப்பைப் பயன்படுத்திக் காட்டுவோம்,
-    # ஆனால் மற்ற மெசேஜ் ஹேண்டலர்களுக்கு முன்னதாக `general_message_tracker` இருப்பதை உறுதிப்படுத்தவும்.
-    
-    # இந்த வரியை மேலே கொண்டு வரவும்.
-    app.add_handler(MessageHandler(filters.ALL, general_message_tracker)) # group argument ஐ நீக்கிவிட்டேன்.
-                                                                           # இது group=0 இல் சேர்க்கப்படும்.
+    # பொதுவான மெசேஜ் டிராக்கரை மற்ற மெசேஜ் ஹேண்டலர்களுக்கு முன்னதாக சேர்க்கவும்.
+    # group ஆர்கியுமென்ட் add_handler ஃபங்ஷனுக்குத் தரப்பட வேண்டும், MessageHandler கன்ஸ்ட்ரக்டருக்கு அல்ல.
+    # group=-2 என்று கொடுக்கலாம், இது பெரும்பாலான ஹேண்டலர்களை விட முன்னதாக செயல்படுத்தப்படும்.
+    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), group=-2)
 
-    # குறிப்பிட்ட மெசேஜ் ஹேண்டலர்களுக்கு வேறு group ஐ கொடுக்கலாம்,
-    # இதனால் general_message_tracker முதலில் செயல்படும்.
-    # உதாரணத்திற்கு, group=1 என்று கொடுக்கலாம்.
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file, group=1))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie, group=1))
+    # குறிப்பிட்ட மெசேஜ் ஹேண்டலர்கள்.
+    # இவற்றுக்கு group=0 (default) அல்லது group=-1 என்று கொடுக்கலாம்,
+    # இது general_message_tracker-க்கு பிறகு செயல்படும்.
+    # முன்பு நீங்கள் group=-1 ஐ general_message_tracker-க்கு பயன்படுத்தியதால்,
+    # அதை மற்ற ஹேண்டலர்களுக்கு கொடுக்கலாம் அல்லது group ஆர்கியுமென்ட்டையே நீக்கலாம்.
+    # group ஆர்கியுமென்ட்டை நீக்கினால், அவை default group 0 இல் சேரும்.
+    # நாம் இப்போது default group 0 இல் சேர்க்கிறோம்.
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file)) # group ஆர்கியுமென்ட்டை நீக்கிவிட்டேன்
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))     # group ஆர்கியுமென்ட்டை நீக்கிவிட்டேன்
 
-    # Callback handlers
+    # Callback handlers (இவற்றில் group ஆர்கியுமென்ட் தேவையில்லை, ஏனெனில் அவை MessageHandler அல்ல)
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
     app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
