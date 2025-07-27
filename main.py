@@ -203,6 +203,7 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
 # --- User Tracking Logic (reusable function) ---
 # --- User Tracking Logic (reusable function) ---
 # --- User Tracking Logic (reusable function) ---
+# --- User Tracking Logic (reusable function) ---
 async def track_user(user: telegram.User):
     """பயனரை Database-இல் பதிவு செய்கிறது அல்லது ஏற்கனவே இருந்தால் லாக் செய்கிறது மற்றும் message_count-ஐ புதுப்பிக்கிறது."""
     user_id = user.id
@@ -220,23 +221,30 @@ async def track_user(user: telegram.User):
                 "message_count": 1 # புதிய பயனர், முதல் மெசேஜ்
             }
             insert_response = supabase.table("users").insert(user_data).execute()
+            
+            # இங்கே insert_response.data வெற்றிகரமானதா என்று சரிபார்க்கவும்
             if insert_response.data:
                 logging.info(f"✅ புதிய பயனர் பதிவு செய்யப்பட்டது: {user_id} (மெசேஜ் கவுண்ட்: 1)")
             else:
-                error_details = insert_response.error if insert_response.error else "தெரியாத பிழை"
-                logging.error(f"❌ பயனர் பதிவு செய்ய முடியவில்லை: {user_id}, பிழை: {error_details}")
+                # பிழையைப் பெற postgrest_error அல்லது status_code ஐப் பயன்படுத்தவும்
+                error_details = insert_response.postgrest_error or f"Status: {insert_response.status_code}"
+                logging.error(f"❌ புதிய பயனர் பதிவு செய்ய முடியவில்லை: {user_id}, பிழை: {error_details}")
         else: # பயனர் ஏற்கனவே Database-இல் இருந்தால், message_count-ஐ அதிகரிக்கவும்
             current_message_count = response.data[0].get("message_count", 0) # message_count இல்லை என்றால் 0
             new_message_count = current_message_count + 1
             
             update_response = supabase.table("users").update({"message_count": new_message_count}).eq("user_id", user_id).execute()
+            
+            # இங்கே update_response.data வெற்றிகரமானதா என்று சரிபார்க்கவும்
             if update_response.data:
                 logging.info(f"பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்கப்பட்டது: {new_message_count}")
             else:
-                error_details = update_response.error if update_response.error else "தெரியாத பிழை"
+                # பிழையைப் பெற postgrest_error அல்லது status_code ஐப் பயன்படுத்தவும்
+                error_details = update_response.postgrest_error or f"Status: {update_response.status_code}"
                 logging.error(f"❌ பயனர் {user_id} இன் மெசேஜ் கவுண்ட் புதுப்பிக்க முடியவில்லை: {error_details}")
 
     except Exception as e:
+        # பொதுவான பிழைகளைக் கையாளவும்
         logging.error(f"❌ பயனர் பதிவு அல்லது புதுப்பித்தல் பிழை: {e}")
 
 # --- General Message Tracker (அனைத்து User செயல்பாடுகளையும் பதிவு செய்ய) ---
