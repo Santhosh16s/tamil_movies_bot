@@ -201,6 +201,7 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
         await message.reply_text("⚠️ போஸ்டர் அனுப்ப முடியவில்லை.")
 
 # --- User Tracking Logic (reusable function) ---
+# --- User Tracking Logic (reusable function) ---
 async def track_user(user: telegram.User):
     """User-ஐ Database-இல் பதிவு செய்கிறது அல்லது ஏற்கனவே இருந்தால் லாக் செய்கிறது."""
     user_id = user.id
@@ -240,11 +241,7 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
     else:
         # effective_user இல்லாத Update-களை லாக் செய்யவும் (பயனரற்ற Update-கள் போன்றவை)
         logging.info(f"Received update without effective_user. Update ID: {update.update_id}")
-        # மேலும் விவரங்களுக்கு: update.effective_update.effective_message.content_type
-        # அல்லது update.callback_query, update.channel_post போன்றவற்றைச் சரிபார்க்கலாம்.
 
-    # இந்த Handler எந்தப் பதிலும் அனுப்பாது அல்லது Update-ஐ உட்கொள்ளாது.
-    # இது மற்ற Handler-கள் வழக்கம்போல் செயல்பட அனுமதிக்கும்.
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/start கட்டளைக்கு பதிலளிக்கிறது மற்றும் User-ஐ Database-இல் பதிவு செய்கிறது."""
@@ -702,7 +699,7 @@ async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("totalusers", total_users_command))
+    app.add_handler(CommandHandler("totalusers", total_users_command)) # இது ஏற்கனவே சேர்க்கப்பட்டுள்ளது!
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
@@ -712,6 +709,8 @@ async def main():
     app.add_handler(CommandHandler("addadmin", add_admin))
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
+
+    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1) # குறைந்த முன்னுரிமையுடன் சேர்க்கப்பட்டுள்ளது
 
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
