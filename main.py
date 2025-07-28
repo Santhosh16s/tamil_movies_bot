@@ -478,7 +478,7 @@ async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if movie_name_key in movies_data:
         await send_movie_poster(query.message, movie_name_key, context)
     else:
-        await query.message.reply_text("❌ படம் கிடைக்கவில்லை!\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும். ✨")
+        await query.message.reply_text("❌ படம் கிடைக்கவில்லை! 🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும். ✨")
 
 # --- /status command ---
 @restricted
