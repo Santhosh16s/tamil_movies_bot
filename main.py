@@ -776,7 +776,8 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
+    # Command Handlers - எப்போதும் முதலில் இருக்க வேண்டும்
+    app.add_handler(CommandHandler("start", start)) # **இந்த வரி எப்போதும் மேலே இருக்க வேண்டும்**
     app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
@@ -788,25 +789,21 @@ async def main():
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
 
-    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
-
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
-
-    # Callback handlers (now using '|' as delimiter)
-    # handle_resolution_click இனி தேவை இல்லை அல்லது அதன் pattern=r"^res\|" நீக்கப்படலாம்.
-    # ஏனெனில் பட்டன்கள் இப்போது URL-ஐப் பயன்படுத்துகின்றன.
-    # இருப்பினும், பாதுகாப்பிற்காக இதை வைத்திருக்கலாம், ஆனால் அது அழைக்கப்படாது.
-    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|")) 
+    # Callback Handlers - கட்டளைகளுக்குப் பிறகு வரலாம்
+    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|")) # இந்த handler இப்போது URL-களைப் பயன்படுத்துவதால் பெரும்பாலும் அழைக்கப்படாது
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
     app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
 
-    logging.info("🚀 பாட் தொடங்குகிறது...")
-    # உங்கள் போட்டின் யூசர்பெயரைப் பெறும் வழி (இது `context.bot.username` மூலம் தானாகவே கிடைக்கும்)
-    # இருப்பினும், நீங்கள் இந்த கோப்பை எங்கு வைக்கிறீர்கள் என்பதை உறுதிப்படுத்த,
-    # `https://t.me/YourBotUsername?start=...` இல் உள்ள `YourBotUsername` ஐ உங்கள் போட்டின்
-    # உண்மையான யூசர்பெயரால் மாற்றவும்.
+    # Message Handlers - specific filters முதலில், பிறகு generic filters
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
     
+    # General Message Tracker - மிகக் குறைந்த முன்னுரிமையுடன் (priority) கடைசியாக இருக்க வேண்டும்
+    # இது அனைத்து செய்திகளையும் பிடிக்கும், ஆனால் மற்ற ஹேண்டலர்கள் அவற்றைச் செயலாக்கத் தவறினால் மட்டுமே
+    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1) 
+
+
+    logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
     
 if __name__ == "__main__":
