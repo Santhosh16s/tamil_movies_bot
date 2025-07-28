@@ -178,11 +178,11 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
     
     keyboard = []
     if movie['files'].get('480p'):
-        keyboard.append(InlineKeyboardButton("480p", url=f"https://t.me/{bot_username}?start=getfile_{movie_name_key}_480p"))
+        keyboard.append(InlineKeyboardButton("480p", url=f"@SKoffibot?start=getfile_{movie_name_key}_480p"))
     if movie['files'].get('720p'):
-        keyboard.append(InlineKeyboardButton("720p", url=f"https://t.me/{bot_username}?start=getfile_{movie_name_key}_720p"))
+        keyboard.append(InlineKeyboardButton("720p", url=f"@SKoffibot?start=getfile_{movie_name_key}_720p"))
     if movie['files'].get('1080p'):
-        keyboard.append(InlineKeyboardButton("1080p", url=f"https://t.me/{bot_username}?start=getfile_{movie_name_key}_1080p"))
+        keyboard.append(InlineKeyboardButton("1080p", url=f"@SKoffibot?start=getfile_{movie_name_key}_1080p"))
 
     # ஒரே வரிசையில் பட்டன்கள் இருக்கும்படி அமைக்க
     if keyboard:
