@@ -753,5 +753,6 @@ async def main():
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
+    
 if __name__ == "__main__":
     asyncio.run(main())
