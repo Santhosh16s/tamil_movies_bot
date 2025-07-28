@@ -408,7 +408,7 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            await update.message.reply_text("❌ படம் கிடைக்கவில்லை!\n2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்.")
+            await update.message.reply_text("❌ படம் கிடைக்கவில்லை!\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும். ✨")
     elif len(good_matches) == 1 and good_matches[0][1] >= 95: # ஒரே ஒரு மிகத் துல்லியமான பொருத்தம் (95% அல்லது அதற்கு மேல்)
         matched_title_key = good_matches[0][0]
         logging.info(f"Direct exact match found for search: '{matched_title_key}'")
@@ -432,7 +432,7 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
         
         movie = movies_data.get(movie_name_key)
         if not movie:
-            return await query.message.reply_text("❌ படம் கிடைக்கவில்லை! 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்.")
+            return await query.message.reply_text("❌ படம் கிடைக்கவில்லை!\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும். ✨")
 
         file_id_to_send = movie['files'].get(res)
 
@@ -478,7 +478,7 @@ async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if movie_name_key in movies_data:
         await send_movie_poster(query.message, movie_name_key, context)
     else:
-        await query.message.reply_text("❌ படம் கிடைக்கவில்லை! 🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும். ✨")
+        await query.message.reply_text("❌ படம் கிடைக்கவில்லை!\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும். ✨")
 
 # --- /status command ---
 @restricted
