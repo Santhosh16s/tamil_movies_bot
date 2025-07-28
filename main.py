@@ -266,10 +266,12 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
         
 # --- /start command ---
 # --- /start command ---
+# --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/start கட்டளைக்கு பதிலளிக்கிறது மற்றும் User-ஐ Database-இல் பதிவு செய்கிறது."""
     user = update.effective_user
     user_id = user.id
+    chat_id = update.effective_chat.id # Get the chat_id where the command was issued
 
     # பயனர் கண்காணிப்பு
     await track_user(user)
@@ -278,13 +280,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args and context.args[0].startswith("getfile_"):
         # இது ஒரு கோப்பு கோரிக்கை.
         # Payload: getfile_movie_name_key_resolution
-        payload_parts = context.args[0].split("_", 2) # getfile_movie_name_key_resolution_can_have_underscores
+        payload_parts = context.args[0].split("_", 2) # getfile, movie_name_key, resolution
         
         if len(payload_parts) == 3: # getfile, movie_name_key, resolution
             command_prefix, movie_name_key, res = payload_parts
             
             movie = movies_data.get(movie_name_key)
             if not movie:
+                # Fallback message for missing movie even with payload
                 await update.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை.\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு எதுவும் சந்தேகங்கள் இருந்ததால் இந்த குழுவில் கேட்கலாம் https://t.me/skmoviesdiscussion")
                 return
 
@@ -298,13 +301,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
                 try:
+                    # நேரடியாக பயனரின் தனிப்பட்ட சாட்டிற்கு கோப்பை அனுப்ப முயற்சிக்கும்
                     sent_msg = await context.bot.send_document(
                         chat_id=user_id, # தனிப்பட்ட சாட்டிற்கு அனுப்பவும்
                         document=file_id_to_send,
                         caption=caption,
                         parse_mode="HTML"
                     )
-                    # இந்த வரியை அன்கமெண்ட் செய்யப்பட்டுள்ளது!
+                    # கோப்பு வெற்றிகரமாக அனுப்பப்பட்டதும் ஒரு Confirmation message.
+                    # இது பொதுவான குழுவில் இருந்தாலோ அல்லது போட்டின் தனிப்பட்ட சாட்டில் வந்தாலோ அனுப்பப்படும்.
+                    if chat_id != user_id: # If the command came from a group, reply in the group that file is sent privately
+                        await update.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது. உங்கள் தனிப்பட்ட சாட்டைப் பார்க்கவும்.")
+                    # 10 நிமிடங்களுக்குப் பிறகு கோப்பை நீக்க
                     asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
                     logging.info(f"File sent to user {user_id} for movie '{movie_name_key}' ({res}) via start payload.")
 
@@ -313,21 +321,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logging.warning(f"Failed to send file to user {user_id}: Bot was blocked by the user.")
                     await update.message.reply_text(
                         "⚠️ உங்களால் கோப்பை பெற முடியவில்லை, ஏனென்றால் நீங்கள் போட்டின் தனிப்பட்ட சாட்டை தடை செய்துள்ளீர்கள்.\n"
-                        "தயவுசெய்து போட்டை Unblock செய்து மீண்டும் முயற்சிக்கவும்."
+                        "தயவுசெய்து போட்டை **Unblock** செய்து மீண்டும் முயற்சிக்கவும்."
                     )
                 except Exception as e:
                     logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
                     await update.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
             else:
+                # Requested resolution file is not available
                 await update.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
         else:
-            # தவறான payload, வழக்கமான start செய்தியை அனுப்பவும்
+            # Invalid payload format, send a regular welcome message
             await update.message.reply_text(f"வணக்கம் {user.first_name}! 👋\n\n"
                 "🎬 லேட்டஸ்ட் 2025 HD தமிழ் படங்கள் வேண்டுமா? ✨\n"
                 "விளம்பரமில்லா உடனடி தேடலுடன், தரமான சினிமா அனுபவம் இங்கே! 🍿\n\n"
                 "🎬 தயவுசெய்து திரைப்படத்தின் பெயரை டைப் செய்து அனுப்புங்கள்!")
     else:
-        # payload இல்லை, வழக்கமான start செய்தியை அனுப்பவும்
+        # No payload, send a regular welcome message
         await update.message.reply_text(f"வணக்கம் {user.first_name}! 👋\n\n"
             "🎬 லேட்டஸ்ட் 2025 HD தமிழ் படங்கள் வேண்டுமா? ✨\n"
             "விளம்பரமில்லா உடனடி தேடலுடன், தரமான சினிமா அனுபவம் இங்கே! 🍿\n\n"
