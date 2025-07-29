@@ -459,7 +459,7 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
             await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
     except Exception as e:
         logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
-        await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
+        await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை. தயவுசெய்து முதலில் எனது தனிப்பட்ட சாட்டில் (Private Chat) `/start` என்று தட்டச்சு செய்து என்னைச் செயல்படுத்தவும். அதன் பிறகு மீண்டும் முயற்சி செய்யுங்கள்.")
 
 # --- Handle movie button click from suggestions ---
 async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
