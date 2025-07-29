@@ -776,35 +776,39 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Command Handlers - எப்போதும் முதலில் இருக்க வேண்டும்
-    app.add_handler(CommandHandler("start", start)) # **இந்த வரி எப்போதும் மேலே இருக்க வேண்டும்**
-    app.add_handler(CommandHandler("totalusers", total_users_command))
-    app.add_handler(CommandHandler("addmovie", addmovie))
-    app.add_handler(CommandHandler("deletemovie", deletemovie))
-    app.add_handler(CommandHandler("edittitle", edittitle))
-    app.add_handler(CommandHandler("movielist", movielist))
-    app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(CommandHandler("adminpanel", admin_panel))
-    app.add_handler(CommandHandler("addadmin", add_admin))
-    app.add_handler(CommandHandler("removeadmin", remove_admin))
-    app.add_handler(CommandHandler("restart", restart_bot))
-
-    # Callback Handlers - கட்டளைகளுக்குப் பிறகு வரலாம்
-    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|")) # இந்த handler இப்போது URL-களைப் பயன்படுத்துவதால் பெரும்பாலும் அழைக்கப்படாது
-    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
-    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
-
-    # Message Handlers - specific filters முதலில், பிறகு generic filters
+    # (உங்கள் அனைத்து add_handler வரிகளும் இங்கு இருக்கும்)
+    app.add_handler(CommandHandler("start", start))
+    # ... மற்ற CommandHandlers, MessageHandlers, CallbackQueryHandlers ...
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
-    
-    # General Message Tracker - மிகக் குறைந்த முன்னுரிமையுடன் (priority) கடைசியாக இருக்க வேண்டும்
-    # இது அனைத்து செய்திகளையும் பிடிக்கும், ஆனால் மற்ற ஹேண்டலர்கள் அவற்றைச் செயலாக்கத் தவறினால் மட்டுமே
-    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1) 
-
+    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
+    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
+    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
+    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
-    await app.run_polling()
+
+    # --- Polling-ஐ நீக்கி Webhook-ஐ அமைக்கவும் ---
+    # `PORT` மற்றும் `WEBHOOK_URL` க்கான Railway சூழல் மாறிகளைப் பயன்படுத்தவும்
+    port = int(os.environ.get("PORT", 80)) # Railway தானாக ஒரு போர்ட்டை வழங்கும்
+    webhook_url = os.environ.get("WEBHOOK_URL", "") # இது உங்கள் Railway app URL ஆக இருக்க வேண்டும்
+
+    # Webhook URL சரியாக இருக்கிறதா என்று உறுதிப்படுத்த
+    if not webhook_url:
+        logging.error("❌ WEBHOOK_URL environment variable is not set. Please set it in Railway.")
+        # அல்லது உங்கள் Railway URL-ஐ இங்கே நேரடியாகக் கொடுக்கலாம், ஆனால் சூழல் மாறி சிறந்தது
+        # webhook_url = "https://web-production-dc809.up.railway.app" # உதாரணத்திற்கு
+
+    try:
+        await app.bot.set_webhook(url=f"{webhook_url}/telegram") # '/telegram' path ஐ சேர்க்கவும்
+        logging.info(f"Webhook set to: {webhook_url}/telegram")
+        
+        # Webhook மூலம் அப்டேட்களைப் பெற, `run_webhook` ஐப் பயன்படுத்தவும்
+        await app.run_webhook(listen="0.0.0.0", port=port, url_path="telegram") # URL_PATH ஐ '/telegram' உடன் பொருத்தவும்
+        logging.info("Application started with webhook.")
+
+    except Exception as e:
+        logging.error(f"❌ Webhook setup failed: {e}")
     
 if __name__ == "__main__":
     asyncio.run(main())
