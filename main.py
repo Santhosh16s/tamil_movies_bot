@@ -725,11 +725,56 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Koyeb மூலம்)...")
     sys.exit(0)
 
+async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    payload = context.args[0] if context.args else None
+
+    # முதல் முறை /start செய்யும் பயனரை பதிவு செய்க
+    await track_user(user) # track_user செயல்பாட்டை இங்கேயும் அழைக்கலாம்.
+
+    if payload and payload.startswith("send_"):
+        try:
+            _, movie_name_key, res = payload.split("_", 2)
+            
+            movie = movies_data.get(movie_name_key)
+            if not movie:
+                await update.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை.")
+                return
+
+            file_id_to_send = movie['files'].get(res)
+
+            if file_id_to_send:
+                caption = (
+                    f"🎬 *{movie_name_key.title()}* - {res}\n\n"
+                    f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
+                    f"⚠️ இந்த File 10 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து இந்த File ஐ உங்கள் saved messages க்கு அனுப்பி வையுங்கள்."
+                )
+                sent_msg = await context.bot.send_document(
+                    chat_id=user.id,
+                    document=file_id_to_send,
+                    caption=caption,
+                    parse_mode="HTML"
+                )
+                await update.message.reply_text("✅ உங்கள் கோப்பு இங்கே!")
+                asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
+            else:
+                await update.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
+
+        except Exception as e:
+            logging.error(f"❌ ஸ்டார்ட் பேலோடுடன் கோப்பு அனுப்ப பிழை: {e}")
+            await update.message.reply_text("கோப்பைப் பெற முடியவில்லை. மீண்டும் முயற்சி செய்யுங்கள்.")
+    else:
+        # வழக்கமான /start மெசேஜ்
+        await update.message.reply_text(f"வணக்கம் {user.first_name}! 👋\n\n"
+                                        "🎬 லேட்டஸ்ட் 2025 HD தமிழ் படங்கள் வேண்டுமா? ✨\n"
+                                        "விளம்பரமில்லா உடனடி தேடலுடன், தரமான சினிமா அனுபவம் இங்கே! 🍿\n\n"
+                                        "🎬 தயவுசெய்து திரைப்படத்தின் பெயரை டைப் செய்து அனுப்புங்கள்!")
+
 # --- Main function to setup bot ---
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("start", start_with_payload))
     app.add_handler(CommandHandler("totalusers", total_users_command)) # இது ஏற்கனவே சேர்க்கப்பட்டுள்ளது!
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
