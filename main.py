@@ -774,61 +774,23 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ... (உங்கள் மற்ற அனைத்து import-களும், செயல்பாடுகளும், மற்றும் main() செயல்பாடும் இங்கே) ...
 
-# Ensure this is at the end of your script, and it directly runs the webhook
 if __name__ == '__main__':
-    # Webhook mode:
-    # `PORT` மற்றும் `WEBHOOK_URL` க்கான Railway சூழல் மாறிகளைப் பயன்படுத்தவும்
-    port = int(os.environ.get("PORT", 8000)) # Default to 8000 if PORT is not set
-    webhook_url = os.environ.get("WEBHOOK_URL", "") # Railway variables are usually set
+    port = int(os.environ.get("PORT", 8000))
+    webhook_url = os.environ.get("WEBHOOK_URL", "")
 
     if not webhook_url:
         logging.error("❌ WEBHOOK_URL environment variable is not set. Please set it in Railway.")
-        # Fallback to a hardcoded URL if you are testing locally and webhook_url is not set
-        # webhook_url = "https://web-production-dc809.up.railway.app" # Only for testing if WEBHOOK_URL is truly missing
 
     app = ApplicationBuilder().token(TOKEN).build()
 
     # (உங்கள் அனைத்து add_handler வரிகளும் இங்கே இருக்கும்)
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("totalusers", total_users_command))
-    app.add_handler(CommandHandler("addmovie", addmovie))
-    app.add_handler(CommandHandler("deletemovie", deletemovie))
-    app.add_handler(CommandHandler("edittitle", edittitle))
-    app.add_handler(CommandHandler("movielist", movielist))
-    app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(CommandHandler("adminpanel", admin_panel))
-    app.add_handler(CommandHandler("addadmin", add_admin))
-    app.add_handler(CommandHandler("removeadmin", remove_admin))
-    app.add_handler(CommandHandler("restart", restart_bot))
-
-    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
-    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
-    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
-    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
+    # ... (மற்ற ஹேண்டலர்கள்) ...
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
 
     try:
-        # Delete any existing webhook (good practice before setting a new one)
-        # இது ஒரு async call என்பதால், இதை ஒரு நிகழ்வு சுழற்சிக்குள் இயக்க வேண்டும்.
-        # ஆனால் Railway தானாகவே ஒரு நிகழ்வு சுழற்சியை வழங்குகிறது.
-        # ஒருமுறை delete webhook API endpoint ஐ நேரடியாக browser இல் இயக்கவும்:
-        # https://api.telegram.org/bot<YOUR_BOT_TOKEN>/deleteWebhook
-        # இது `Cannot close a running event loop` பிழையைத் தவிர்க்க உதவும்.
-        # await app.bot.delete_webhook() # இந்த வரியை இப்போதைக்கு நீக்கி விடுவோம்
-        # logging.info("Existing webhook deleted (if any).")
-
-        # Set the new webhook
-        # இது ஒரு async call என்பதால், `main` செயல்பாட்டிற்கு வெளியே நேரடியாக இயக்க முடியாது.
-        # Railway, start command இல் Webhook-ஐ செட் செய்ய ஒரு வழிமுறையை வழங்க வேண்டும்.
-        # தற்போதைக்கு, Webhook URL-ஐ Browser இல் Set செய்துவிட்டீர்கள் என்று வைத்துக்கொள்வோம்.
-        # await app.bot.set_webhook(url=f"{webhook_url}/telegram") # இந்த வரியை இப்போதைக்கு நீக்கி விடுவோம்
-        # logging.info(f"Webhook set to: {webhook_url}/telegram")
-        
-        # Run the webhook server
-        # இந்த முறை நேரடியாக Webhook சர்வரை இயக்கவும், async.run() இல்லாமல்
+        # Webhook சர்வரை இயக்கவும்
         app.run_webhook(listen="0.0.0.0", port=port, url_path="telegram")
         logging.info("Application started with webhook.")
 
