@@ -160,7 +160,6 @@ async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, m
         logging.warning(f"Error deleting message {message_id} in chat {chat_id}: {e}")
 
 # --- Send movie poster with resolution buttons ---
-# --- Send movie poster with resolution buttons ---
 async def send_movie_poster(message: Message, movie_name_key: str, context: ContextTypes.DEFAULT_TYPE):
     movie = movies_data.get(movie_name_key)
     if not movie:
@@ -172,37 +171,41 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
         f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!"
     )
 
-    # Resolution பட்டன்களுக்கு தனிப்பட்ட போட் சாட் லிங்க்களை உருவாக்குகிறோம்.
-    # இந்த லிங்க்கள் போட்டின் /start கட்டளையை ஒரு குறிப்பிட்ட payload உடன் அழைக்கும்.
-    bot_username = context.bot.username # உங்கள் போட்டின் யூசர்பெயரை தானாகப் பெற.
-    
-    keyboard = []
-    if movie['files'].get('480p'):
-        keyboard.append(InlineKeyboardButton("480p", url=f"https://t.me/SKoffibot?start=getfile_{movie_name_key}_480p"))
-    if movie['files'].get('720p'):
-        keyboard.append(InlineKeyboardButton("720p", url=f"https://t.me/SKoffibot?start=getfile_{movie_name_key}_720p"))
-    if movie['files'].get('1080p'):
-        keyboard.append(InlineKeyboardButton("1080p", url=f"https://t.me/SKoffibot?start=getfile_{movie_name_key}_1080p"))
+    # callback_data இல் உள்ள '_' சிக்கலைத் தவிர்க்க, மூவி பெயரை Base64 போன்ற குறியீட்டில் மாற்றலாம்,
+    # ஆனால் தற்போதைக்கு, மூவி பெயரில் '_' இருக்கும்பட்சத்தில் அதை ஒரு தனி கேரக்டரால் (எ.கா., `|`) மாற்றுவோம்.
+    # பின்னர் அதை `split()` செய்யும் போது பிரித்தெடுப்போம்.
 
-    # ஒரே வரிசையில் பட்டன்கள் இருக்கும்படி அமைக்க
-    if keyboard:
-        final_keyboard = [keyboard]
-    else:
-        final_keyboard = []
+    # Option 1: Replace spaces with a special character for callback_data, then revert
+    # This might still cause issues if the movie title itself contains this special char.
+    # A more robust approach involves base64 encoding/decoding but for simplicity...
 
+    # Let's try to pass the clean_title directly. The issue is in splitting it back.
+    # The clean_title ensures no special chars except spaces, and then spaces become '_'.
+    # If the clean_title itself contains '_', then `split('_')` becomes problematic.
+    # The solution is to split only on the *first* underscore, or use a different delimiter.
+
+    # For resolution buttons, we'll prefix with 'res|' and then use '|' as delimiter.
+    # This ensures movie name with underscores is handled correctly.
+    keyboard = [
+        [
+            InlineKeyboardButton("480p", callback_data=f"res|{movie_name_key}|480p"),
+            InlineKeyboardButton("720p", callback_data=f"res|{movie_name_key}|720p"),
+            InlineKeyboardButton("1080p", callback_data=f"res|{movie_name_key}|1080p"),
+        ]
+    ]
 
     try:
         sent = await message.reply_photo(
             movie["poster_url"],
             caption=caption,
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(final_keyboard) if final_keyboard else None
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        asyncio.create_task(delete_after_delay(context, message.chat.id, sent.message_id))
+        asyncio.create_task(delete_after_delay(context, message.chat_id, sent.message_id))
     except Exception as e:
         logging.error(f"❌ போஸ்டர் அனுப்ப பிழை: {e}")
         await message.reply_text("⚠️ போஸ்டர் அனுப்ப முடியவில்லை.")
-        
+
 # --- User Tracking Logic (reusable function) ---
 # --- User Tracking Logic (reusable function) ---
 # --- User Tracking Logic (reusable function) ---
@@ -265,82 +268,38 @@ async def general_message_tracker(update: Update, context: ContextTypes.DEFAULT_
         logging.info(f"effective_user இல்லாத அப்டேட் பெறப்பட்டது. அப்டேட் ID: {update.update_id}")
         
 # --- /start command ---
-# --- /start command ---
-# --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/start கட்டளைக்கு பதிலளிக்கிறது மற்றும் User-ஐ Database-இல் பதிவு செய்கிறது."""
     user = update.effective_user
     user_id = user.id
-    chat_id = update.effective_chat.id # Get the chat_id where the command was issued
 
-    # பயனர் கண்காணிப்பு
-    await track_user(user)
-
-    # start கட்டளையின் payload ஐ சரிபார்க்கவும்
-    if context.args and context.args[0].startswith("getfile_"):
-        # இது ஒரு கோப்பு கோரிக்கை.
-        # Payload: getfile_movie_name_key_resolution
-        payload_parts = context.args[0].split("_", 2) # getfile, movie_name_key, resolution
+    try:
+        # User ஏற்கனவே Database-இல் இருக்கிறாரா என்று சரிபார்க்கவும்
+        response = supabase.table("users").select("user_id").eq("user_id", user_id).limit(1).execute()
         
-        if len(payload_parts) == 3: # getfile, movie_name_key, resolution
-            command_prefix, movie_name_key, res = payload_parts
-            
-            movie = movies_data.get(movie_name_key)
-            if not movie:
-                # Fallback message for missing movie even with payload
-                await update.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை.\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு எதுவும் சந்தேகங்கள் இருந்ததால் இந்த குழுவில் கேட்கலாம் https://t.me/skmoviesdiscussion")
-                return
-
-            file_id_to_send = movie['files'].get(res)
-
-            if file_id_to_send:
-                caption = (
-                    f"🎬 *{movie_name_key.title()}*\n\n"
-                    f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
-                    f"⚠️ இந்த File 10 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து இந்த File ஐ உங்கள் saved messages க்கு அனுப்பி வையுங்கள்."
-                )
-
-                try:
-                    # நேரடியாக பயனரின் தனிப்பட்ட சாட்டிற்கு கோப்பை அனுப்ப முயற்சிக்கும்
-                    sent_msg = await context.bot.send_document(
-                        chat_id=user_id, # தனிப்பட்ட சாட்டிற்கு அனுப்பவும்
-                        document=file_id_to_send,
-                        caption=caption,
-                        parse_mode="HTML"
-                    )
-                    # கோப்பு வெற்றிகரமாக அனுப்பப்பட்டதும் ஒரு Confirmation message.
-                    # இது பொதுவான குழுவில் இருந்தாலோ அல்லது போட்டின் தனிப்பட்ட சாட்டில் வந்தாலோ அனுப்பப்படும்.
-                    if chat_id != user_id: # If the command came from a group, reply in the group that file is sent privately
-                        await update.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது. உங்கள் தனிப்பட்ட சாட்டைப் பார்க்கவும்.")
-                    # 10 நிமிடங்களுக்குப் பிறகு கோப்பை நீக்க
-                    asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
-                    logging.info(f"File sent to user {user_id} for movie '{movie_name_key}' ({res}) via start payload.")
-
-                except telegram.error.Forbidden:
-                    # பயனர் போட்டைத் தடை செய்திருந்தால் அல்லது தனிப்பட்ட முறையில் செய்திகளைப் பெற மறுத்தால்
-                    logging.warning(f"Failed to send file to user {user_id}: Bot was blocked by the user.")
-                    await update.message.reply_text(
-                        "⚠️ உங்களால் கோப்பை பெற முடியவில்லை, ஏனென்றால் நீங்கள் போட்டின் தனிப்பட்ட சாட்டை தடை செய்துள்ளீர்கள்.\n"
-                        "தயவுசெய்து போட்டை **Unblock** செய்து மீண்டும் முயற்சிக்கவும்."
-                    )
-                except Exception as e:
-                    logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
-                    await update.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
+        if not response.data: # User Database-இல் இல்லை என்றால், அதைச் சேர்க்கவும்
+            user_data = {
+                "user_id": user_id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "joined_at": datetime.utcnow().isoformat()
+            }
+            insert_response = supabase.table("users").insert(user_data).execute()
+            if insert_response.data:
+                logging.info(f"✅ புதிய User பதிவு செய்யப்பட்டது: {user_id}")
             else:
-                # Requested resolution file is not available
-                await update.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
+                logging.error(f"❌ User பதிவு செய்ய முடியவில்லை: {user_id}, Error: {insert_response.error}")
         else:
-            # Invalid payload format, send a regular welcome message
-            await update.message.reply_text(f"வணக்கம் {user.first_name}! 👋\n\n"
-                "🎬 லேட்டஸ்ட் 2025 HD தமிழ் படங்கள் வேண்டுமா? ✨\n"
-                "விளம்பரமில்லா உடனடி தேடலுடன், தரமான சினிமா அனுபவம் இங்கே! 🍿\n\n"
-                "🎬 தயவுசெய்து திரைப்படத்தின் பெயரை டைப் செய்து அனுப்புங்கள்!")
-    else:
-        # No payload, send a regular welcome message
-        await update.message.reply_text(f"வணக்கம் {user.first_name}! 👋\n\n"
-            "🎬 லேட்டஸ்ட் 2025 HD தமிழ் படங்கள் வேண்டுமா? ✨\n"
-            "விளம்பரமில்லா உடனடி தேடலுடன், தரமான சினிமா அனுபவம் இங்கே! 🍿\n\n"
-            "🎬 தயவுசெய்து திரைப்படத்தின் பெயரை டைப் செய்து அனுப்புங்கள்!")
+            logging.info(f"User {user_id} ஏற்கனவே பதிவு செய்யப்பட்டுள்ளது.")
+
+    except Exception as e:
+        logging.error(f"❌ User பதிவு செய்யும் பிழை: {e}")
+
+    await update.message.reply_text(f"வணக்கம் {user.first_name}! 👋\n\n"
+        "🎬 லேட்டஸ்ட் 2025 HD தமிழ் படங்கள் வேண்டுமா? ✨\n"
+        "விளம்பரமில்லா உடனடி தேடலுடன், தரமான சினிமா அனுபவம் இங்கே! 🍿\n\n"
+        "🎬 தயவுசெய்து திரைப்படத்தின் பெயரை டைப் செய்து அனுப்புங்கள்!")
 
 # --- /totalusers command ---
 @restricted # Admin-கள் மட்டுமே பார்க்க முடியும்
@@ -463,20 +422,12 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # --- Handle resolution button clicks ---
-# --- Handle resolution button clicks ---
-# இந்த callback_query handler இப்போது தேவையில்லை, ஏனெனில் பட்டன்கள் URL-ஐப் பயன்படுத்தும்.
-# இருந்தாலும், நீங்கள் இதை நீக்க விரும்பவில்லை என்றால், அது எந்த விளைவையும் ஏற்படுத்தாது.
-# ஆனால், நீங்கள் இதை நீக்கலாம், ஏனெனில் பட்டன்கள் இனி callback_data அனுப்புவதில்லை.
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("கோப்பு உங்கள் தனிப்பட்ட சாட்டில் அனுப்பப்படும்...") # இது பயனருக்கு ஒரு சிறிய pop-up காண்பிக்கும்
-    
-    # இந்த செயல்பாடு இப்போது URL-அடிப்படையிலான `/start` கட்டளையால் கையாளப்படும்,
-    # எனவே இந்த குறியீடு இனி இயங்காது. ஆனால் இது பாதுகாப்பிற்காக இருக்கலாம்.
-    
-    # பழைய callback_data (res|movie_name_key|res) வடிவத்தைப் பயன்படுத்துகிறது.
-    # இந்த செயல்பாடு இனி அழைக்கப்படாது, ஏனெனில் send_movie_poster இப்போது URL-களைப் பயன்படுத்துகிறது.
+    await query.answer()
     try:
+        # Changed split delimiter from '_' to '|' and maxsplit to 2
+        # Example: 'res|movie_name_with_underscores|480p'
         _, movie_name_key, res = query.data.split("|", 2) 
         
         movie = movies_data.get(movie_name_key)
@@ -500,6 +451,8 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
             )
 
             await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
+            
+            # இந்த வரியை அன்கமெண்ட் செய்யப்பட்டுள்ளது!
             asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
 
         else:
@@ -772,28 +725,12 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Koyeb மூலம்)...")
     sys.exit(0)
 
-# ... (உங்கள் மற்ற அனைத்து import-களும், செயல்பாடுகளும், மற்றும் main() செயல்பாடும் இங்கே) ...
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8000))
-    webhook_url_from_env = os.environ.get("WEBHOOK_URL", "") # சூழல் மாறியிலிருந்து URL படிக்கவும்
-
-    # உங்கள் Public URL ஐ இங்கு நேரடியாகக் கொடுக்கவும்.
-    # இது அனைத்து சிக்கல்களையும் நீக்கி, Webhook URL சரியாக அமைவதை உறுதி செய்யும்.
-    # (உங்கள் Railway App URL ஐ `https://web-production-dc809.up.railway.app` என்பதற்குப் பதிலாக உள்ளிடவும்)
-    final_webhook_url = "https://web-production-dc809.up.railway.app" 
-    
-    # ஒருவேளை சூழல் மாறி வேலை செய்தால் அதைப் பயன்படுத்த, இல்லையென்றால் hardcoded URL ஐப் பயன்படுத்த
-    if webhook_url_from_env and webhook_url_from_env.startswith("https://"):
-        final_webhook_url = webhook_url_from_env
-    else:
-        logging.warning(f"WEBHOOK_URL environment variable is either not set, or does not start with https://. Using hardcoded URL: {final_webhook_url}")
-
+# --- Main function to setup bot ---
+async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # (உங்கள் அனைத்து add_handler வரிகளும் இங்கே இருக்கும்)
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("totalusers", total_users_command))
+    app.add_handler(CommandHandler("totalusers", total_users_command)) # இது ஏற்கனவே சேர்க்கப்பட்டுள்ளது!
     app.add_handler(CommandHandler("addmovie", addmovie))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
@@ -804,35 +741,18 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
 
-    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
-    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
-    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
+    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1) # குறைந்த முன்னுரிமையுடன் சேர்க்கப்பட்டுள்ளது
+
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
-    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
+
+    # Callback handlers (now using '|' as delimiter)
+    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
+    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
+    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_")) # No change here, movielist callback uses page number
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
-
-    # Webhook செயல்பாடுகளை உள்ளடக்கிய ஒரு async துணை-செயல்பாட்டை உருவாக்கவும்
-    async def start_webhook_server():
-        try:
-            # ஒருவேளை ஒரு பழைய webhook இருந்தால் அதை நீக்க முயற்சிப்போம் (பிழை வராமல் இருக்க)
-            try:
-                await app.bot.delete_webhook()
-                logging.info("Existing webhook deleted (if any).")
-            except Exception as e:
-                logging.warning(f"Could not delete existing webhook: {e}")
-
-            # புதிய webhook-ஐ அமைக்கவும்
-            await app.bot.set_webhook(url=f"{final_webhook_url}/telegram")
-            logging.info(f"Webhook set to: {final_webhook_url}/telegram")
-
-            # Webhook சர்வரை இயக்கவும்
-            await app.run_webhook(listen="0.0.0.0", port=port, url_path="telegram")
-            logging.info("Application started with webhook.")
-
-        except Exception as e:
-            logging.error(f"❌ Webhook setup or execution failed: {e}")
-
-    # async செயல்பாட்டை இயக்கவும்
-    asyncio.run(start_webhook_server())
+    await app.run_polling()
+    
+if __name__ == "__main__":
+    asyncio.run(main())
