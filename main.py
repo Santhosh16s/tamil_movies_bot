@@ -475,7 +475,7 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.message.reply_text(
-            "⚠️ **File வரவில்லையா?** இந்தக் கோப்பைப் பெற, கீழே உள்ள **பட்டனைக் கிளிக் செய்து**, எனது **Private chat இல் `/start` செய்து** மீண்டும் உங்களுக்குத் தேவையான **quality ஐ கிளிக் செய்யவும்.**",
+            "⚠️ **File வரவில்லையா?** இந்தக் File-ஐ பெற, கீழே உள்ள பட்டனைக் கிளிக் செய்து, எனது **Privet chat இல் `/start` செய்து** மீண்டும் உங்களுக்கு தேவையான quality ஐ click செய்யவும்",
             parse_mode="Markdown",
             reply_markup=reply_markup
         )
