@@ -83,7 +83,8 @@ def load_movies_data():
                     '480p': movie['file_480p'],
                     '720p': movie['file_720p'],
                     '1080p': movie['file_1080p'],
-                }
+                },
+                'channel_id': movie.get('channel_id')
             }
         logging.info(f"✅ {len(movies_data)} திரைப்படங்கள் Supabase இலிருந்து ஏற்றப்பட்டன.")
         return movies_data
@@ -447,7 +448,7 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
             )
 
         file_msg_id_to_send = movie['files'].get(res)
-        file_store_channel = movie['channel_id'] 
+        file_store_channel = movie.get('channel_id')
 
         if file_msg_id_to_send and file_store_channel:
             caption = (
