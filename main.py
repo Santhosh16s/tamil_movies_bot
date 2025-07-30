@@ -165,7 +165,7 @@ async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, m
         logging.warning(f"Error deleting message {message_id} in chat {chat_id}: {e}")
 
 # --- Send movie poster with resolution buttons ---
-async def send_movie_poster(message: Message, movie_name_key: str, context: ContextTypes.DEFAULT_TYPE):
+async def send_movie_poster(message: telegram.Message, movie_name_key: str, context: ContextTypes.DEFAULT_TYPE):
     movie = movies_data.get(movie_name_key)
     if not movie:
         await message.reply_text("❌ படம் கிடைக்கவில்லை அல்லது போஸ்டர் இல்லை.")
@@ -175,22 +175,6 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
         f"🎬 *{movie_name_key.title()}*\n\n"
         f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!"
     )
-
-    # callback_data இல் உள்ள '_' சிக்கலைத் தவிர்க்க, மூவி பெயரை Base64 போன்ற குறியீட்டில் மாற்றலாம்,
-    # ஆனால் தற்போதைக்கு, மூவி பெயரில் '_' இருக்கும்பட்சத்தில் அதை ஒரு தனி கேரக்டரால் (எ.கா., `|`) மாற்றுவோம்.
-    # பின்னர் அதை `split()` செய்யும் போது பிரித்தெடுப்போம்.
-
-    # Option 1: Replace spaces with a special character for callback_data, then revert
-    # This might still cause issues if the movie title itself contains this special char.
-    # A more robust approach involves base64 encoding/decoding but for simplicity...
-
-    # Let's try to pass the clean_title directly. The issue is in splitting it back.
-    # The clean_title ensures no special chars except spaces, and then spaces become '_'.
-    # If the clean_title itself contains '_', then `split('_')` becomes problematic.
-    # The solution is to split only on the *first* underscore, or use a different delimiter.
-
-    # For resolution buttons, we'll prefix with 'res|' and then use '|' as delimiter.
-    # This ensures movie name with underscores is handled correctly.
     keyboard = [
         [
             InlineKeyboardButton("480p", callback_data=f"res|{movie_name_key}|480p"),
@@ -198,18 +182,45 @@ async def send_movie_poster(message: Message, movie_name_key: str, context: Cont
             InlineKeyboardButton("1080p", callback_data=f"res|{movie_name_key}|1080p"),
         ]
     ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
-        sent = await message.reply_photo(
-            movie["poster_url"],
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        asyncio.create_task(delete_after_delay(context, message.chat_id, sent.message_id))
+        # போஸ்டர் URL சரியாக உள்ளதா மற்றும் Telegram அதை அணுக முடியுமா என்று சரிபார்க்கிறோம்.
+        # ஒருவேளை poster_url என்பது file_id ஆக இருந்தால், அது தானாகவே வேலை செய்யும்.
+        # ஆனால் URL ஆக இருந்தால், அது செல்லுபடியாகக்கூடிய URL ஆக இருக்க வேண்டும்.
+        if movie.get("poster_url"):
+            sent = await message.reply_photo(
+                movie["poster_url"],
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
+            logging.info(f"✅ போஸ்டர் '{movie_name_key}' வெற்றிகரமாக அனுப்பப்பட்டது.")
+        else:
+            # poster_url இல்லை என்றால், அதற்குப் பதிலாக ஒரு மெசேஜ் உடன் பட்டன்களை அனுப்புகிறோம்.
+            sent = await message.reply_text(
+                f"🎬 *{movie_name_key.title()}*\n\n"
+                f"⚠️ போஸ்டர் கிடைக்கவில்லை.\n\n"
+                f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!",
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
+            logging.warning(f"⚠️ '{movie_name_key}' படத்திற்கு போஸ்டர் URL இல்லை. வெறுமனே டெக்ஸ்ட் மெசேஜ் அனுப்பப்பட்டது.")
+        
+        asyncio.create_task(delete_after_delay(context, message.chat.id, sent.message_id))
+
     except Exception as e:
         logging.error(f"❌ போஸ்டர் அனுப்ப பிழை: {e}")
-        await message.reply_text("⚠️ போஸ்டர் அனுப்ப முடியவில்லை.")
+        # போஸ்டர் அனுப்ப முடியாவிட்டால், அதற்குப் பதிலாக டெக்ஸ்ட் மெசேஜ் மற்றும் பட்டன்களை அனுப்புகிறோம்.
+        sent = await message.reply_text(
+            f"🎬 *{movie_name_key.title()}*\n\n"
+            f"⚠️ போஸ்டர் அனுப்ப முடியவில்லை. அதற்கான கோப்பு அல்லது URL-ல் சிக்கல் இருக்கலாம்.\n\n"
+            f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!",
+            parse_mode="HTML",
+            reply_markup=reply_markup
+        )
+        logging.warning(f"⚠️ போஸ்டர் அனுப்ப முடியாமல் போனதால், '{movie_name_key}' படத்திற்கு டெக்ஸ்ட் மெசேஜ் அனுப்பப்பட்டது.")
+        asyncio.create_task(delete_after_delay(context, message.chat.id, sent.message_id))
 
 # --- User Tracking Logic (reusable function) ---
 # --- User Tracking Logic (reusable function) ---
