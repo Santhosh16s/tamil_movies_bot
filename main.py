@@ -165,7 +165,7 @@ async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, m
         logging.warning(f"Error deleting message {message_id} in chat {chat_id}: {e}")
 
 # --- Send movie poster with resolution buttons ---
-async def send_movie_poster(message: telegram.Message, movie_name_key: str, context: ContextTypes.DEFAULT_TYPE):
+async def send_movie_poster(message: Message, movie_name_key: str, context: ContextTypes.DEFAULT_TYPE):
     movie = movies_data.get(movie_name_key)
     if not movie:
         await message.reply_text("❌ படம் கிடைக்கவில்லை அல்லது போஸ்டர் இல்லை.")
@@ -175,6 +175,22 @@ async def send_movie_poster(message: telegram.Message, movie_name_key: str, cont
         f"🎬 *{movie_name_key.title()}*\n\n"
         f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!"
     )
+
+    # callback_data இல் உள்ள '_' சிக்கலைத் தவிர்க்க, மூவி பெயரை Base64 போன்ற குறியீட்டில் மாற்றலாம்,
+    # ஆனால் தற்போதைக்கு, மூவி பெயரில் '_' இருக்கும்பட்சத்தில் அதை ஒரு தனி கேரக்டரால் (எ.கா., `|`) மாற்றுவோம்.
+    # பின்னர் அதை `split()` செய்யும் போது பிரித்தெடுப்போம்.
+
+    # Option 1: Replace spaces with a special character for callback_data, then revert
+    # This might still cause issues if the movie title itself contains this special char.
+    # A more robust approach involves base64 encoding/decoding but for simplicity...
+
+    # Let's try to pass the clean_title directly. The issue is in splitting it back.
+    # The clean_title ensures no special chars except spaces, and then spaces become '_'.
+    # If the clean_title itself contains '_', then `split('_')` becomes problematic.
+    # The solution is to split only on the *first* underscore, or use a different delimiter.
+
+    # For resolution buttons, we'll prefix with 'res|' and then use '|' as delimiter.
+    # This ensures movie name with underscores is handled correctly.
     keyboard = [
         [
             InlineKeyboardButton("480p", callback_data=f"res|{movie_name_key}|480p"),
@@ -182,45 +198,18 @@ async def send_movie_poster(message: telegram.Message, movie_name_key: str, cont
             InlineKeyboardButton("1080p", callback_data=f"res|{movie_name_key}|1080p"),
         ]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
-        # போஸ்டர் URL சரியாக உள்ளதா மற்றும் Telegram அதை அணுக முடியுமா என்று சரிபார்க்கிறோம்.
-        # ஒருவேளை poster_url என்பது file_id ஆக இருந்தால், அது தானாகவே வேலை செய்யும்.
-        # ஆனால் URL ஆக இருந்தால், அது செல்லுபடியாகக்கூடிய URL ஆக இருக்க வேண்டும்.
-        if movie.get("poster_url"):
-            sent = await message.reply_photo(
-                movie["poster_url"],
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=reply_markup
-            )
-            logging.info(f"✅ போஸ்டர் '{movie_name_key}' வெற்றிகரமாக அனுப்பப்பட்டது.")
-        else:
-            # poster_url இல்லை என்றால், அதற்குப் பதிலாக ஒரு மெசேஜ் உடன் பட்டன்களை அனுப்புகிறோம்.
-            sent = await message.reply_text(
-                f"🎬 *{movie_name_key.title()}*\n\n"
-                f"⚠️ போஸ்டர் கிடைக்கவில்லை.\n\n"
-                f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!",
-                parse_mode="HTML",
-                reply_markup=reply_markup
-            )
-            logging.warning(f"⚠️ '{movie_name_key}' படத்திற்கு போஸ்டர் URL இல்லை. வெறுமனே டெக்ஸ்ட் மெசேஜ் அனுப்பப்பட்டது.")
-        
-        asyncio.create_task(delete_after_delay(context, message.chat.id, sent.message_id))
-
+        sent = await message.reply_photo(
+            movie["poster_url"],
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        asyncio.create_task(delete_after_delay(context, message.chat_id, sent.message_id))
     except Exception as e:
         logging.error(f"❌ போஸ்டர் அனுப்ப பிழை: {e}")
-        # போஸ்டர் அனுப்ப முடியாவிட்டால், அதற்குப் பதிலாக டெக்ஸ்ட் மெசேஜ் மற்றும் பட்டன்களை அனுப்புகிறோம்.
-        sent = await message.reply_text(
-            f"🎬 *{movie_name_key.title()}*\n\n"
-            f"⚠️ போஸ்டர் அனுப்ப முடியவில்லை. அதற்கான கோப்பு அல்லது URL-ல் சிக்கல் இருக்கலாம்.\n\n"
-            f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும். Join பண்ணுங்க!",
-            parse_mode="HTML",
-            reply_markup=reply_markup
-        )
-        logging.warning(f"⚠️ போஸ்டர் அனுப்ப முடியாமல் போனதால், '{movie_name_key}' படத்திற்கு டெக்ஸ்ட் மெசேஜ் அனுப்பப்பட்டது.")
-        asyncio.create_task(delete_after_delay(context, message.chat.id, sent.message_id))
+        await message.reply_text("⚠️ போஸ்டர் அனுப்ப முடியவில்லை.")
 
 # --- User Tracking Logic (reusable function) ---
 # --- User Tracking Logic (reusable function) ---
@@ -441,30 +430,26 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    
-    # query.answer() ஆனது, கிளிக் செய்த பட்டன் லோடிங் ஆவதை நிறுத்த அல்லது ஒரு பாப்-அப் காட்டப் பயன்படும்.
+    await query.answer()
 
     if query.data is None or "|" not in query.data:
-        await query.answer("தவறான கோரிக்கை.")
-        return
+        return await query.message.reply_text("தவறான கோரிக்கை.")
 
     _, movie_name_key, res = query.data.split("|", 2)
 
     movie = movies_data.get(movie_name_key)
     if not movie:
-        await query.answer("திரைப்படம் கிடைக்கவில்லை.")
         return await query.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு எதுவும் சந்தேகங்கள் இருந்ததால் இந்த குழுவில் கேட்கலாம் https://t.me/skmoviesdiscussion")
 
     file_id_to_send = movie['files'].get(res)
 
     if not file_id_to_send:
-        await query.answer("இந்த resolution-க்கு file இல்லை.")
         return await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
 
     try:
-        # ** கோப்பை நேரடியாக பயனரின் தனிப்பட்ட சாட்டிற்கு அனுப்ப முயற்சி **
+        # ** இங்கே, கோப்பை நேரடியாக அனுப்ப முயற்சிக்கிறோம் **
         sent_msg = await context.bot.send_document(
-            chat_id=user_id,
+            chat_id=user_id, # பயனரின் தனிப்பட்ட சாட்டிற்கு அனுப்ப முயற்சி
             document=file_id_to_send,
             caption=(
                 f"🎬 *{movie_name_key.title()}*\n\n"
@@ -473,34 +458,30 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
             ),
             parse_mode="HTML"
         )
-        await query.answer("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.") # பாப்-அப் உறுதிப்படுத்தல்
-        await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.") # குழுவில் உள்ள மெசேஜ்
+        await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
         asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
 
     except telegram.error.Forbidden as e:
         # பாட்டால் தனிப்பட்ட சாட்டிற்கு அனுப்ப முடியவில்லை என்றால் (புதிய பயனர்)
         logging.warning(f"பயனர் {user_id} தனிப்பட்ட சாட்டில் இல்லை, கோப்பு அனுப்ப முடியவில்லை: {e}")
-        
         # கோப்பு விவரங்களை தற்காலிகமாக சேமிக்கிறோம்
         pending_file_requests[user_id] = {"movie_name_key": movie_name_key, "resolution": res}
 
-        # பயனரை பாட்டின் தனிப்பட்ட சாட்டிற்கு அழைத்துச் செல்லும் URL
+        # பயனரை பாட்டின் தனிப்பட்ட சாட்டிற்கு அழைத்துச் செல்லும் பட்டன்
         bot_username = (await context.bot.get_me()).username
         start_link = f"https://t.me/{bot_username}?start=sendfile_{movie_name_key}_{res}"
         
-        # முக்கிய மாற்றம்: query.answer() உடன் URL-ஐ அனுப்புகிறோம்.
-        # இது ஒரு பாப்-அப் அலர்ட்டாக "Open" அல்லது "Switch to private chat" பட்டனைக் காட்டும்.
-        await query.answer(
-            text="⚠️ கோப்பைப் பெற, பாட்டின் தனிப்பட்ட சாட்டிற்குச் செல்லவும்!",
-            show_alert=True, # இது ஒரு பாப்-அப் அலர்ட்டாக தோன்றும்
-            url=start_link # இந்த URL பயனரை பாட்டின் தனிப்பட்ட சாட்டிற்கு அழைத்துச் செல்லும்
-        )
-        # குழுவில் எந்த மெசேஜும் அனுப்பத் தேவையில்லை, ஏனெனில் பாப்-அப் போதுமானது.
+        keyboard = [[InlineKeyboardButton("👉 கோப்பைப் பெற இங்கு கிளிக் செய்யவும்", url=start_link)]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
+        await query.message.reply_text(
+            "⚠️ **File வரவில்லையா?** இந்தக் கோப்பைப் பெற, கீழே உள்ள **பட்டனைக் கிளிக் செய்து**, எனது **Private chat இல் `/start` செய்து** மீண்டும் உங்களுக்குத் தேவையான **quality ஐ கிளிக் செய்யவும்.**",
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
     except Exception as e:
         logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
-        await query.answer("⚠️ கோப்பு அனுப்ப முடியவில்லை. தயவுசெய்து மீண்டும் முயற்சிக்கவும்.")
-        await query.message.reply_text("⚠️ கோப்பு அனுப்ப முடியவில்லை. தயவுசெய்து மீண்டும் முயற்சிக்கவும்.")
+        await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை. தயவுசெய்து மீண்டும் முயற்சிக்கவும்.")
 
 # --- Handle movie button click from suggestions ---
 async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -777,15 +758,32 @@ async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if payload and payload.startswith("sendfile_"):
         try:
-            # "sendfile_" க்குப் பிறகு உள்ள பகுதியை எடுத்து, கடைசி underscore-ஐ வைத்து resolution பிரிக்கிறோம்.
-            full_movie_res_string = payload[len("sendfile_"):] 
-            movie_name_key_parts = full_movie_res_string.rsplit('_', 1) 
+            # sendfile_movie_name_key_res_ என்பதிலிருந்து விவரங்களைப் பிரித்தெடுக்கவும்
+            # ஒருவேளை movie_name_key-இல் underscore இருந்தால் சரியாகப் பிரிக்க 3-க்கு மேல் பாகங்கள் தேவைப்படலாம்.
+            # அதனால், split("_", 3) என்பது முதல் 3 underscore-களை பிரித்து, மீதியை ஒரே பாகமாக வைக்கும்.
+            parts = payload.split("_", 3)
+            if len(parts) >= 4:
+                # முதல் இரண்டு பாகங்கள் "sendfile" மற்றும் "movie" அல்லது அதுபோன்ற முன்னொட்டுகளுக்காக
+                # கடைசி இரண்டு பாகங்கள் movie_name_key மற்றும் resolution
+                # payload format: sendfile_movie_name_key_res
+                # parts[0] = "sendfile"
+                # parts[1] = (unused, could be empty if no second underscore after "sendfile")
+                # parts[2] = movie_name_key
+                # parts[3] = res
+                # எளிதாகப் பிரிக்க, நாம் sendfile_ என்ற முன்னொட்டை மட்டும் சரிபார்த்து, மீதியை movie_name_key_res என்று எடுக்கலாம்.
+                # பின்னர் அதை மீண்டும் split செய்யலாம்.
+                
+                # ஒரு பாதுகாப்பான பிரிப்பு முறை:
+                full_movie_res_string = payload[len("sendfile_"):] # "sendfile_" க்குப் பிறகு உள்ள பகுதியை எடுக்கிறோம்
+                movie_name_key_parts = full_movie_res_string.rsplit('_', 1) # கடைசி underscore-ஐ வைத்து resolution பிரிக்கிறோம்
 
-            if len(movie_name_key_parts) == 2:
-                movie_name_key = movie_name_key_parts[0]
-                res = movie_name_key_parts[1]
+                if len(movie_name_key_parts) == 2:
+                    movie_name_key = movie_name_key_parts[0]
+                    res = movie_name_key_parts[1]
+                else:
+                    raise ValueError("Invalid payload format (movie_name_key or resolution missing)")
             else:
-                raise ValueError("Invalid payload format (movie_name_key or resolution missing)")
+                raise ValueError("Invalid payload format")
 
             logging.info(f"Start with payload detected for user {user_id}: {payload}")
 
@@ -810,11 +808,11 @@ async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     parse_mode="HTML"
                 )
                 await update.message.reply_text("✅ உங்கள் கோப்பு இங்கே!")
+                asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
+
                 # கோப்பு அனுப்பப்பட்ட பிறகு, நிலுவையிலுள்ள கோரிக்கை தகவலை நீக்க
                 if user_id in pending_file_requests:
                     del pending_file_requests[user_id]
-                
-                asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
             else:
                 await update.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
 
@@ -822,7 +820,7 @@ async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logging.error(f"❌ ஸ்டார்ட் பேலோடுடன் கோப்பு அனுப்ப பிழை: {e}")
             await update.message.reply_text("கோப்பைப் பெற முடியவில்லை. மீண்டும் முயற்சி செய்யுங்கள்.")
     else:
-        # பொதுவான /start செய்தி (payload இல்லை என்றால்)
+        # பொதுவான /start செய்தி
         await update.message.reply_text(f"வணக்கம் {user.first_name}! 👋\n\n"
             "🎬 லேட்டஸ்ட் 2025 HD தமிழ் படங்கள் வேண்டுமா? ✨\n"
             "விளம்பரமில்லா உடனடி தேடலுடன், தரமான சினிமா அனுபவம் இங்கே! 🍿\n\n"
