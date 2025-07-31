@@ -412,7 +412,7 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
-            asyncio.create_task(delete_after_delay(context, chat_id, chat_id.message_id))
+            asyncio.create_task(delete_after_delay(context, chat_id, chat_id.message))
 
 # --- இங்குதான் முக்கிய மாற்றம் ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
