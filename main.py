@@ -155,9 +155,9 @@ def time_diff(past_time: datetime) -> str:
     else:
         return f"{int(days)} days ago"
 
-# --- Delete messages after 10 minutes ---
+# --- Delete messages after 5 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    await asyncio.sleep(600)
+    await asyncio.sleep(300)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         logging.info(f"Message {message_id} in chat {chat_id} deleted after delay.")
@@ -454,7 +454,7 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
             caption=(
                 f"🎬 *{movie_name_key.title()}* - {res}p\n\n"
                 f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
-                f"⚠️ இந்த File 10 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து File ஐ உங்கள் Saved Messages-க்குப் Forward பண்ணி வையுங்கள்."
+                f"⚠️ இந்த File 5 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து File ஐ உங்கள் Saved Messages-க்குப் Forward பண்ணி வையுங்கள்."
             ),
             parse_mode="HTML"
         )
@@ -782,7 +782,7 @@ async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 caption = (
                     f"🎬 *{movie_name_key.title()}* - {res}\n\n"
                     f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
-                    f"⚠️ இந்த File 10 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து இந்த File ஐ உங்கள் saved messages க்கு அனுப்பி வையுங்கள்."
+                    f"⚠️ இந்த File 5 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து இந்த File ஐ உங்கள் saved messages க்கு அனுப்பி வையுங்கள்."
                 )
                 sent_msg = await context.bot.send_document(
                     chat_id=user.id,
