@@ -429,43 +429,40 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- இங்குதான் முக்கிய மாற்றம் ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
     await query.answer()
-    try:
-        _, movie_name, res = query.data.split("_")
-        movie = movies_data.get(movie_name)
-        if not movie:
-            return await query.message.reply_text("❌ படம் கிடைக்கவில்லை!")
 
-        file_url = movie['files'].get(res)
-        if file_url:
-            caption = (
-                f"🎬 {movie_name.title()}\n\n"
+    if query.data is None or "|" not in query.data:
+        return await query.message.reply_text("தவறான கோரிக்கை.")
+
+    _, movie_name_key, res = query.data.split("|", 2)
+
+    movie = movies_data.get(movie_name_key)
+    if not movie:
+        return await query.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு எதுவும் சந்தேகங்கள் இருந்ததால் இந்த குழுவில் கேட்கலாம் https://t.me/skmoviesdiscussion")
+
+    file_id_to_send = movie['files'].get(res)
+
+    if not file_id_to_send:
+        return await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
+
+    try:
+        # ** இங்கே, கோப்பை நேரடியாக அனுப்ப முயற்சிக்கிறோம் **
+        sent_msg = await context.bot.send_document( # பயனரின் தனிப்பட்ட சாட்டிற்கு அனுப்ப முயற்சி
+            document=file_id_to_send,
+            caption=(
+                f"🎬 *{movie_name_key.title()}*\n\n"
                 f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
                 f"⚠️ இந்த File 10 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து இந்த File ஐ உங்கள் saved messages க்கு அனுப்பி வையுங்கள்."
-            )
+            ),
+            parse_mode="HTML"
+        )
+        await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
+        asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
 
-            sent_msg = await context.bot.send_document(
-                chat_id=query.from_user.id,
-                document=file_url,
-                caption=caption,
-                parse_mode="HTML"
-            )
-
-            await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
-
-            async def delete_sent_file():
-                await asyncio.sleep(600)
-                try:
-                    await context.bot.delete_message(chat_id=sent_msg.chat.id, message_id=sent_msg.message_id)
-                except Exception as e:
-                    logging.error(f"File delete error: {e}")
-
-            asyncio.create_task(delete_sent_file())
-        else:
-            await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
     except Exception as e:
-        logging.error(f"File send error: {e}")
-        await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
+        logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
+        await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை. தயவுசெய்து மீண்டும் முயற்சிக்கவும்.")
 
 # --- Handle movie button click from suggestions ---
 async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
