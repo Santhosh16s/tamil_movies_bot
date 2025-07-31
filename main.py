@@ -749,10 +749,8 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- இங்குதான் முக்கிய மாற்றம் ---
 async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
     user = update.effective_user
-    user_id = user.id
-    await query.answer() # பயனர் வருகையை பதிவு செய்ய
+    await track_user(user) # பயனர் வருகையை பதிவு செய்ய
 
     # payload-ஐ சரிபார்க்கவும்
     payload = context.args[0] if context.args else None
@@ -803,12 +801,11 @@ async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
                     f"⚠️ இந்த File 10 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து இந்த File ஐ உங்கள் saved messages க்கு அனுப்பி வையுங்கள்."
                 )
-                sent_msg = await query.message.reply_document(
+                sent_msg = await update.message.reply_document(
                     document=file_id_to_send,
                     caption=caption,
                     parse_mode="HTML"
                 )
-
                 await update.message.reply_text("✅ உங்கள் கோப்பு இங்கே!")
                 asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
 
