@@ -157,7 +157,7 @@ def time_diff(past_time: datetime) -> str:
 
 # --- Delete messages after 10 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    await asyncio.sleep(20)
+    await asyncio.sleep(600)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         logging.info(f"Message {message_id} in chat {chat_id} deleted after delay.")
