@@ -408,11 +408,11 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")]
                 for m in broad_suggestions
             ]
-            sent_msg = await update.message.reply_text(
+            chat_id = await update.message.reply_text(
                 "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
-            asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
+            asyncio.create_task(delete_after_delay(context, chat_id, chat_id.message_id))
 
 # --- இங்குதான் முக்கிய மாற்றம் ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
