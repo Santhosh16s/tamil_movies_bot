@@ -440,32 +440,41 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
     if not query.data.startswith("res_"):
         return
 
-    try:
-        movie_id, res = query.data[4:].split("_", 1)
-    except ValueError:
-        return await query.message.reply_text("⚠️ தவறான data format.")
+    # data format: res_{movie_id}_{resolution}
+    _, movie_id, res = query.data.split("_", 2)
 
-    # Supabase-இலிருந்து படம் data-வை பெறுதல்
     movie = await get_movie_from_supabase(movie_id)
-
     if not movie:
         return await query.message.reply_text("⚠️ படம் கிடைக்கவில்லை.")
 
     file_message_id = movie['files'].get(res)
-
     if not file_message_id:
-        return await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
+        return await query.message.reply_text("⚠️ இந்த resolution-க்கு கோப்பு இல்லை.")
 
     try:
-        # ✅ File-ஐ group-லயே அனுப்புகிறோம்
-        await context.bot.copy_message(
-            chat_id=query.message.chat.id,  # group chat ID
-            from_chat_id=PRIVATE_CHANNEL_LINK,
-            message_id=file_message_id
-        )
-    except telegram.error.TelegramError as e:
-        logging.error(f"File அனுப்ப முடியவில்லை: {e}")
+        # பாகுபாடு:  
+        # 1) Callback-ஐ group-ல் click பண்ணினா, group-ல அனுப்பு  
+        # 2) Callback-ஐ private chat-ல் click பண்ணினா, user-க்கு தனிப்பட்ட முறையில் அனுப்பு
+
+        if query.message.chat.type in ['group', 'supergroup']:
+            # Group-ல button click
+            await context.bot.copy_message(
+                chat_id=query.message.chat.id,         # group id
+                from_chat_id=PRIVATE_CHANNEL_LINK,       # private channel id
+                message_id=file_message_id
+            )
+        else:
+            # Private chat-ல் button click
+            await context.bot.copy_message(
+                chat_id=query.from_user.id,             # user id
+                from_chat_id=PRIVATE_CHANNEL_LINK,
+                message_id=file_message_id
+            )
+
+    except Exception as e:
         await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
+        print(f"Error sending file: {e}")
+
 
 
 # --- Handle movie button click from suggestions ---
