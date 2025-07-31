@@ -33,6 +33,12 @@ PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+async def get_movie_from_supabase(movie_id: str):
+    response = supabase.table("movies").select("*").eq("id", movie_id).single().execute()
+    if response.data:
+        return response.data
+    return None
+
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     logging.info(f"✅ Supabase URL: {SUPABASE_URL}")
@@ -429,59 +435,38 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- இங்குதான் முக்கிய மாற்றம் ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
     await query.answer()
 
-    if query.data is None or "|" not in query.data:
-        return await query.message.reply_text("தவறான கோரிக்கை.")
+    if not query.data.startswith("res_"):
+        return
 
-    _, movie_name_key, res = query.data.split("|", 2)
+    try:
+        movie_id, res = query.data[4:].split("_", 1)
+    except ValueError:
+        return await query.message.reply_text("⚠️ தவறான data format.")
 
-    movie = movies_data.get(movie_name_key)
+    # Supabase-இலிருந்து படம் data-வை பெறுதல்
+    movie = await get_movie_from_supabase(movie_id)
+
     if not movie:
-        return await query.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு எதுவும் சந்தேகங்கள் இருந்ததால் இந்த குழுவில் கேட்கலாம் https://t.me/skmoviesdiscussion")
+        return await query.message.reply_text("⚠️ படம் கிடைக்கவில்லை.")
 
-    file_id_to_send = movie['files'].get(res)
+    file_message_id = movie['files'].get(res)
 
-    if not file_id_to_send:
+    if not file_message_id:
         return await query.message.reply_text("⚠️ இந்த resolution-க்கு file இல்லை.")
 
     try:
-        # ** இங்கே, கோப்பை நேரடியாக அனுப்ப முயற்சிக்கிறோம் **
-        sent_msg = await context.bot.send_document(
-            chat_id=user_id, # பயனரின் தனிப்பட்ட சாட்டிற்கு அனுப்ப முயற்சி
-            document=file_id_to_send,
-            caption=(
-                f"🎬 *{movie_name_key.title()}*\n\n"
-                f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
-                f"⚠️ இந்த File 10 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து இந்த File ஐ உங்கள் saved messages க்கு அனுப்பி வையுங்கள்."
-            ),
-            parse_mode="HTML"
+        # ✅ File-ஐ group-லயே அனுப்புகிறோம்
+        await context.bot.copy_message(
+            chat_id=query.message.chat.id,  # group chat ID
+            from_chat_id=PRIVATE_CHANNEL_LINK,
+            message_id=file_message_id
         )
-        await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
-        asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
+    except telegram.error.TelegramError as e:
+        logging.error(f"File அனுப்ப முடியவில்லை: {e}")
+        await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை.")
 
-    except telegram.error.Forbidden as e:
-        # பாட்டால் தனிப்பட்ட சாட்டிற்கு அனுப்ப முடியவில்லை என்றால் (புதிய பயனர்)
-        logging.warning(f"பயனர் {user_id} தனிப்பட்ட சாட்டில் இல்லை, கோப்பு அனுப்ப முடியவில்லை: {e}")
-        # கோப்பு விவரங்களை தற்காலிகமாக சேமிக்கிறோம்
-        pending_file_requests[user_id] = {"movie_name_key": movie_name_key, "resolution": res}
-
-        # பயனரை பாட்டின் தனிப்பட்ட சாட்டிற்கு அழைத்துச் செல்லும் பட்டன்
-        bot_username = (await context.bot.get_me()).username
-        start_link = f"https://t.me/{bot_username}?start=sendfile_{movie_name_key}_{res}"
-        
-        keyboard = [[InlineKeyboardButton("👉 கோப்பைப் பெற இங்கு கிளிக் செய்யவும்", url=start_link)]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await query.message.reply_text(
-            "⚠️ **File வரவில்லையா?** இந்தக் கோப்பைப் பெற, கீழே உள்ள **பட்டனைக் கிளிக் செய்து**, எனது **Private chat இல் `/start` செய்து** மீண்டும் உங்களுக்குத் தேவையான **quality ஐ கிளிக் செய்யவும்.**",
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
-    except Exception as e:
-        logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
-        await query.message.reply_text("⚠️ கோப்பை அனுப்ப முடியவில்லை. தயவுசெய்து மீண்டும் முயற்சிக்கவும்.")
 
 # --- Handle movie button click from suggestions ---
 async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
