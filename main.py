@@ -448,7 +448,7 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
 
     try:
         # ** இங்கே, கோப்பை நேரடியாக அனுப்ப முயற்சிக்கிறோம் **
-        sent_msg = await context.bot.send_document( # பயனரின் தனிப்பட்ட சாட்டிற்கு அனுப்ப முயற்சி
+        sent_msg = await context.bot.send_document(
             document=file_id_to_send,
             caption=(
                 f"🎬 *{movie_name_key.title()}*\n\n"
@@ -457,8 +457,6 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
             ),
             parse_mode="HTML"
         )
-        await query.message.reply_text("✅ கோப்பு உங்களுக்கு தனிப்பட்ட மெசேஜாக அனுப்பப்பட்டது.")
-        asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
 
     except Exception as e:
         logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
