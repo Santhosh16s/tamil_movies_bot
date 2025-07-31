@@ -448,8 +448,8 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
 
     try:
         # ** இங்கே, கோப்பை நேரடியாக அனுப்ப முயற்சிக்கிறோம் **
-        sent_msg = await query.message.reply_document(
-            document=file_id_to_send,
+        sent_msg = await context.bot.send_document(
+            chat_id=user_id, # பயனரின் தனிப்பட்ட சாட்டிற்கு அனுப்ப முயற்சி
             document=file_id_to_send,
             caption=(
                 f"🎬 *{movie_name_key.title()}*\n\n"
@@ -801,12 +801,12 @@ async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     f"👉 <a href='{PRIVATE_CHANNEL_LINK}'>SK Movies Updates (News)🔔</a> - புதிய படங்கள், அப்டேட்கள் அனைத்தும் இங்கே கிடைக்கும்.\nJoin பண்ணுங்க!\n\n"
                     f"⚠️ இந்த File 10 நிமிடங்களில் நீக்கப்படும். தயவுசெய்து இந்த File ஐ உங்கள் saved messages க்கு அனுப்பி வையுங்கள்."
                 )
-                sent_msg = await context.bot.send_document(
-                    chat_id=user.id,
+                sent_msg = await update.message.reply_document(
                     document=file_id_to_send,
                     caption=caption,
                     parse_mode="HTML"
                 )
+
                 await update.message.reply_text("✅ உங்கள் கோப்பு இங்கே!")
                 asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
 
