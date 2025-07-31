@@ -157,7 +157,7 @@ def time_diff(past_time: datetime) -> str:
 
 # --- Delete messages after 10 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    await asyncio.sleep(20)
+    await asyncio.sleep(600)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         logging.info(f"Message {message_id} in chat {chat_id} deleted after delay.")
@@ -390,7 +390,7 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     search_query = update.message.text.strip()
 
     global movies_data
-    movies_data = load_movies_data()  # சமீபத்திய தரவை ஏற்றவும்
+    movies_data = load_movies_data() # சமீபத்திய தரவை ஏற்றவும்
 
     if not movies_data:
         await update.message.reply_text("டேட்டாபேஸ் காலியாக உள்ளது அல்லது ஏற்ற முடியவில்லை. பின்னர் முயற்சிக்கவும்.")
@@ -399,20 +399,32 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cleaned_search_query = clean_title(search_query)
     movie_titles = list(movies_data.keys())
 
+    # ஒரு குறிப்பிட்ட score_cutoff (எ.கா., 80) உடன் பொருந்தும் அனைத்து நல்ல பொருத்தங்களையும் பெறவும்
+    # இது 'amaran' மற்றும் 'amaranad' இரண்டையும் 'amara' தேடலுக்குக் கண்டறியும்
     good_matches = process.extract(cleaned_search_query, movie_titles, score_cutoff=80)
 
     if not good_matches:
+        # எந்த நல்ல பொருத்தமும் இல்லை என்றால், குறைந்த score_cutoff (எ.கா., 60) உடன் பரந்த பரிந்துரைகளை முயற்சிக்கவும்
         broad_suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=60)
         if broad_suggestions:
-            keyboard = [
-                [InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")]
-                for m in broad_suggestions
-            ]
-            sent_msg = await update.message.reply_text(
+            keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in broad_suggestions]
+            await update.message.reply_text(
                 "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
-            asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
+        else:
+            await update.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு எதுவும் சந்தேகங்கள் இருந்ததால் இந்த குழுவில் கேட்கலாம் https://t.me/skmoviesdiscussion")
+    elif len(good_matches) == 1 and good_matches[0][1] >= 95: # ஒரே ஒரு மிகத் துல்லியமான பொருத்தம் (95% அல்லது அதற்கு மேல்)
+        matched_title_key = good_matches[0][0]
+        logging.info(f"Direct exact match found for search: '{matched_title_key}'")
+        await send_movie_poster(update.message, matched_title_key, context)
+    else: # பல நல்ல பொருத்தங்கள் அல்லது ஒரே ஒரு பொருத்தம் போதுமான அளவு துல்லியமாக இல்லை (95% க்கும் குறைவு)
+        # அனைத்து நல்ல பொருத்தங்களையும் பரிந்துரைகளாகக் காட்டவும்
+        keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in good_matches]
+        await update.message.reply_text(
+            "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 # --- இங்குதான் முக்கிய மாற்றம் ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
