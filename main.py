@@ -157,7 +157,7 @@ def time_diff(past_time: datetime) -> str:
 
 # --- Delete messages after 10 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    await asyncio.sleep(600)
+    await asyncio.sleep(20)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         logging.info(f"Message {message_id} in chat {chat_id} deleted after delay.")
@@ -412,8 +412,6 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
-            chat_id = update.effective_chat.id
-            asyncio.create_task(delete_after_delay(context, chat_id, sent_msg.message_id))
 
 # --- இங்குதான் முக்கிய மாற்றம் ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
