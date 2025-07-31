@@ -448,8 +448,8 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
 
     try:
         # ** இங்கே, கோப்பை நேரடியாக அனுப்ப முயற்சிக்கிறோம் **
-        sent_msg = await context.bot.send_document(
-            chat_id=user_id, # பயனரின் தனிப்பட்ட சாட்டிற்கு அனுப்ப முயற்சி
+        sent_msg = await query.message.reply_document(
+            document=file_id_to_send,
             document=file_id_to_send,
             caption=(
                 f"🎬 *{movie_name_key.title()}*\n\n"
