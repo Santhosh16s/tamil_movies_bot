@@ -410,6 +410,7 @@ async def is_user_subscribed(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -
         return False
 
 # --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
+# --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -421,7 +422,10 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
     _, movie_name_key, res = query.data.split("|", 2)
 
     # பயனர் சேனலில் இணைந்திருக்கிறாரா என்பதை சரிபார்க்கவும்
-    if not await is_user_subscribed(user_id, context):
+    is_subscribed = await is_user_subscribed(user_id, context)
+
+    # பயனர் இணைக்கவில்லை என்றால், சேனலில் இணையச் சொல்லும் மெசேஜை அனுப்பவும்.
+    if not is_subscribed:
         await query.message.reply_text(
             "⚠️ இந்த திரைப்படத்தைப் பெற, முதலில் நமது சேனலில் இணையவும்.",
             reply_markup=InlineKeyboardMarkup([
@@ -431,7 +435,7 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
         )
         return
 
-    # பயனர் இணைந்திருந்தால், திரைப்படத்தை அனுப்பவும்
+    # பயனர் ஏற்கனவே இணைந்திருந்தால், திரைப்படத்தை அனுப்பவும்.
     movie = movies_data.get(movie_name_key)
     if not movie:
         return await query.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு எதுவும் சந்தேகங்கள் இருந்தால் இந்த குழுவில் கேட்கலாம் https://t.me/skmoviesdiscussion")
@@ -453,7 +457,6 @@ async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_
             caption=caption,
             parse_mode="HTML"
         )
-        await query.message.reply_text("✅ நீங்கள் இப்போது சேனலில் இணைந்துவிட்டீர்கள். உங்கள் திரைப்படம் இங்கே!")
         asyncio.create_task(delete_after_delay(context, sent_msg.chat.id, sent_msg.message_id))
     except Exception as e:
         logging.error(f"❌ கோப்பு அனுப்ப பிழை: {e}")
