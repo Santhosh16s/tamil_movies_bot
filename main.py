@@ -5,12 +5,13 @@ import unicodedata
 import re
 import sys
 import os
+import time
 import telegram
 from rapidfuzz import process
 from dotenv import load_dotenv
 from functools import wraps
 from supabase.client import create_client, Client
-from datetime import datetime
+from datetime import datetime, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import (
     ApplicationBuilder,
@@ -135,23 +136,21 @@ def save_movie_to_db(title: str, poster_id: str, file_ids: list) -> bool:
         return False
     
 # --- Time difference for status ---
-def time_diff(past_time: datetime) -> str:
-    now = datetime.utcnow()
-    diff = now - past_time
-
-    seconds = diff.total_seconds()
-    minutes = seconds / 60
-    hours = minutes / 60
-    days = hours / 24
+def time_diff(dt):
+    now = datetime.now(timezone.utc)
+    diff = now - dt.replace(tzinfo=timezone.utc)
+    seconds = int(diff.total_seconds())
 
     if seconds < 60:
-        return f"{int(seconds)} seconds ago"
-    elif minutes < 60:
-        return f"{int(minutes)} minutes ago"
-    elif hours < 24:
-        return f"{int(hours)} hours ago"
-    else:
-        return f"{int(days)} days ago"
+        return f"{seconds} வினாடிகள் முன்பு"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} நிமிடங்கள் முன்பு"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} மணிநேரம் முன்பு"
+    days = hours // 24
+    return f"{days} நாட்கள் முன்பு"
 
 # --- Delete messages after 10 minutes ---
 async def delete_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
@@ -535,32 +534,47 @@ async def movie_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # --- /status command ---
 @restricted
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Shows the current status of the bot, including the number of movies and upload details.
+    """
     try:
+        # Supabase-ல் இருந்து மொத்த திரைப்படங்களின் எண்ணிக்கையைப் பெறுதல்.
         response = supabase.table("movies").select("id", count="exact").execute()
         total_movies = response.count or 0
-        db_size_mb = "N/A"
 
-        last_movie_resp = supabase.table("movies").select("title", "uploaded_at").order("id", desc=True).limit(1).execute()
+        db_size_mb = "N/A"  # டேட்டாபேஸ் அளவை நேரடியாக Supabase API மூலம் பெற முடியாது.
+
+        # கடைசியாகப் பதிவேற்றப்பட்ட திரைப்படத்தின் தகவலைப் பெறுதல்.
+        # uploaded_at-ஐ பயன்படுத்தி வரிசைப்படுத்துவது சிறந்தது.
+        last_movie_resp = supabase.table("movies").select("title", "uploaded_at").order("uploaded_at", desc=True).limit(1).execute()
+        
         last = last_movie_resp.data[0] if last_movie_resp.data else None
+        
         if last:
             last_title = last['title']
+            # datetime.fromisoformat-ஐ பயன்படுத்தி நேரத்தை சரியாக மாற்றுதல்.
             last_upload_time = datetime.fromisoformat(last['uploaded_at'])
             time_ago = time_diff(last_upload_time)
         else:
-            last_title = "None"
+            last_title = "இல்லை"
             time_ago = "N/A"
 
         text = (
-            f"📊 Bot Status:\n"
-            f"• Total Movies: {total_movies}\n"
-            f"• Database Size: {db_size_mb}\n"
-            f"• Last Upload: \"{last_title.title()}\" – {time_ago}"
+            f"📊 *Bot Status:*\n"
+            f"----------------------------------\n"
+            f"• *மொத்த திரைப்படங்கள்:* `{total_movies}`\n"
+            f"• *டேட்டாபேஸ் அளவு:* `{db_size_mb}`\n"
+            f"• *கடைசியாகப் பதிவேற்றம்:* \"*{last_title.title()}*\" – _{time_ago}_"
         )
 
-        await update.message.reply_text(text)
+        await update.message.reply_text(text, parse_mode='Markdown')
+        
     except Exception as e:
+        # Supabase-ல் இருந்து தரவுகளைப் பெற பிழை ஏற்பட்டால்,
+        # அதை இங்கே கையாண்டு, பயனருக்குத் தெளிவான பிழைச் செய்தியை அனுப்புகிறது.
         logging.error(f"❌ Status பிழை: {e}")
         await update.message.reply_text("❌ Status info பெற முடியவில்லை.")
+
 
 # --- /adminpanel command ---
 @restricted
