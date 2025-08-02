@@ -661,32 +661,39 @@ async def edittitle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /deletemovie command ---
 @restricted
 async def deletemovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """திரைப்படத்தை டேட்டாபேஸில் இருந்து நீக்குகிறது."""
+    """
+    திரைப்படத்தை டேட்டாபேஸில் இருந்து நீக்குகிறது.
+    பயன்பாடு: /deletemovie <திரைப்படப் பெயர்>
+    """
     args = context.args
     if not args:
         await update.message.reply_text("⚠️ Usage: `/deletemovie <movie name>`", parse_mode="Markdown")
         return
-    title_raw = " ".join(args).strip()
-    title_to_delete_cleaned = clean_title(title_raw)
-    logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}' (Raw: '{title_raw}')")
+    
+    # திரைப்படப் பெயரைச் சரியாகச் சுத்தம் செய்தல்
+    title_to_delete_cleaned = " ".join(args).strip().title()
+
+    logging.info(f"Attempting to delete title: '{title_to_delete_cleaned}'")
+    
     try:
+        # Supabase-ல் இருந்து திரைப்படம் நீக்க கோரிக்கை அனுப்புதல்
         response = supabase.table("movies").delete().eq("title", title_to_delete_cleaned).execute()
-        logging.info(f"Supabase delete response data: {response.data}")
-        if hasattr(response, 'postgrest_error') and response.postgrest_error:
-            logging.error(f"Supabase delete PostgREST error: {response.postgrest_error}")
-        elif hasattr(response, 'error') and response.error:
-            logging.error(f"Supabase delete error (old format): {response.error}")
+        
+        # நீக்கப்பட்ட திரைப்படங்களின் எண்ணிக்கையைப் பெறுதல்
+        # Supabase delete operation-க்கு பின் response.data-வில் நீக்கப்பட்ட item-கள் இருக்கும்.
+        deleted_count = len(response.data) if response.data else 0
+
+        if deleted_count > 0:
+            # திரைப்படம் வெற்றிகரமாக நீக்கப்பட்டால்
+            await update.message.reply_text(f"✅ *{title_to_delete_cleaned}* படத்தை நீக்கிவிட்டேன்.", parse_mode="Markdown")
         else:
-            logging.info("Supabase delete operation completed without PostgREST error.")
-        if response.data:
-            global movies_data
-            movies_data = load_movies_data()
-            await update.message.reply_text(f"✅ *{title_raw.title()}* படத்தை நீக்கிவிட்டேன்.", parse_mode="Markdown")
-        else:
+            # திரைப்படம் கண்டுபிடிக்கப்படவில்லை என்றால்
             await update.message.reply_text("❌ அந்தப் படம் கிடைக்கவில்லை. சரியான பெயர் கொடுக்கவும்.")
+    
     except Exception as e:
         logging.error(f"❌ நீக்குதல் பிழை: {e}")
         await update.message.reply_text("❌ DB-இல் இருந்து நீக்க முடியவில்லை.")
+
 
 # --- Pagination helpers ---
 def get_total_movies_count() -> int:
