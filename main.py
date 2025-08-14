@@ -307,87 +307,46 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = message.from_user.id
     chat_id = message.chat.id
 
-    # இங்கே message.video ஐயும் சேர்த்துள்ளேன்
-    if user_id not in user_files or (user_files[user_id].get("poster_msg_id") is None and not message.photo and not message.document and not message.video):
+    if user_id not in user_files or (user_files[user_id]["poster"] is None and not message.photo and not message.document):
         await message.reply_text("❗ முதலில் /addmovie அனுப்பவும்.")
         return
 
-    if not os.getenv("FILE_STORE_CHANNEL_ID"):
-        await message.reply_text("❌ FILE_STORE_CHANNEL_ID environment variable அமைக்கப்படவில்லை. Admin-ஐத் தொடர்பு கொள்ளவும்.")
-        logging.error("FILE_STORE_CHANNEL_ID not set in environment variables.")
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        user_files[user_id]["poster"] = file_id
+        await message.reply_text("🖼️ Poster received.")
+        asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
         return
 
-    file_store_channel_id = int(os.getenv("FILE_STORE_CHANNEL_ID"))
-
-    # போஸ்டரைக் கையாள்கிறது (புகைப்படம்)
-    if message.photo:
-        if user_files[user_id].get("poster_msg_id"):
-            await message.reply_text("❗ Poster ஏற்கனவே பெறப்பட்டது.")
-            asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
-            return
-
-        try:
-            forwarded_message = await context.bot.forward_message(
-                chat_id=file_store_channel_id,
-                from_chat_id=message.chat.id,
-                message_id=message.message_id
-            )
-            user_files[user_id]["poster_msg_id"] = forwarded_message.message_id
-            user_files[user_id]["file_store_channel_id"] = file_store_channel_id
-            await message.reply_text("🖼️ Poster received and saved.")
-            asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
-        except Exception as e:
-            logging.error(f"❌ போஸ்டரை File Store Channel-க்கு Forward செய்ய முடியவில்லை: {e}")
-            await message.reply_text("❌ போஸ்டரை சேமிக்க முடியவில்லை. Bot-க்கு File Storage Channel-இல் அனுமதி உள்ளதா என்று சரிபார்க்கவும்.")
-            return
-
-    # மூவி ஃபைல்களைக் கையாள்கிறது (வீடியோ அல்லது டாக்குமெண்ட்)
-    # filters.VIDEO ஐயும் இங்கே சேர்த்துள்ளேன்
-    if message.document or message.video:
-        if len(user_files[user_id].get("movies", [])) >= 3:
+    if message.document:
+        if len(user_files[user_id]["movies"]) >= 3:
             await message.reply_text("❗ மூன்று movie files ஏற்கனவே பெற்றுவிட்டேன்.")
-            asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
             return
 
-        try:
-            forwarded_message = await context.bot.forward_message(
-                chat_id=file_store_channel_id,
-                from_chat_id=message.chat.id,
-                message_id=message.message_id
-            )
-            
-            if "movies" not in user_files[user_id]:
-                user_files[user_id]["movies"] = []
+        movie_file_id = message.document.file_id
+        movie_file_name = message.document.file_name
 
-            user_files[user_id]["movies"].append({
-                "message_id": forwarded_message.message_id, # forwarded message_id-ஐ சேமிக்கவும்
-                # file_name ஐ document அல்லது video-இலிருந்து எடுக்கவும்
-                "file_name": message.document.file_name if message.document else message.video.file_name
-            })
-            user_files[user_id]["file_store_channel_id"] = file_store_channel_id
+        user_files[user_id]["movies"].append({
+            "file_id": movie_file_id,
+            "file_name": movie_file_name
+        })
 
-            await message.reply_text(
-                f"🎥 Movie file {len(user_files[user_id]['movies'])} received and saved.\n📂 `{user_files[user_id]['movies'][-1]['file_name']}`",
-                parse_mode="Markdown"
-            )
-            asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
-        except Exception as e:
-            logging.error(f"❌ Document/Video-ஐ File Store Channel-க்கு Forward செய்ய முடியவில்லை: {e}")
-            await message.reply_text("❌ Movie File-ஐ சேமிக்க முடியவில்லை. Bot-க்கு File Storage Channel-இல் அனுமதி உள்ளதா என்று சரிபார்க்கவும்.")
-            return
+        await message.reply_text(
+            f"🎥 Movie file {len(user_files[user_id]['movies'])} received.\n📂 `{movie_file_name}`",
+            parse_mode="Markdown"
+        )
+        asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
 
-    # அனைத்து கோப்புகளும் பெறப்பட்டால், DB-இல் சேமிக்க வேண்டும்.
-    if user_files[user_id].get("poster_msg_id") and len(user_files[user_id].get("movies", [])) == 3:
-        poster_msg_id = user_files[user_id]["poster_msg_id"]
+    if user_files[user_id]["poster"] and len(user_files[user_id]["movies"]) == 3:
+        poster_id = user_files[user_id]["poster"]
         movies_list = user_files[user_id]["movies"]
-        channel_id_to_save = user_files[user_id]["file_store_channel_id"]
-
-        telegram_msg_ids_for_db = [m["message_id"] for m in movies_list] 
+        
+        telegram_file_ids_for_db = [m["file_id"] for m in movies_list] 
         
         raw_title = extract_title(movies_list[0]["file_name"])
         cleaned_title = clean_title(raw_title)
 
-        saved = save_movie_to_db(cleaned_title, poster_msg_id, telegram_msg_ids_for_db, channel_id_to_save)
+        saved = save_movie_to_db(cleaned_title, poster_id, telegram_file_ids_for_db) 
         if saved:
             global movies_data
             movies_data = load_movies_data()
@@ -395,7 +354,7 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await message.reply_text("❌ DB-ல் சேமிக்க முடியவில்லை.")
 
-        user_files[user_id] = {"poster_msg_id": None, "movies": [], "file_store_channel_id": None}
+        user_files[user_id] = {"poster": None, "movies": []}
 
 # --- Send movie on text message (search) ---
 async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -894,47 +853,35 @@ async def start_with_payload(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # --- Main function to setup bot ---
 async def main():
-    # 'app' variable-ஐ உலகளாவியதாக (global) அறிவிக்க வேண்டும்.
-    # இது is_user_subscribed செயல்பாட்டிற்கு bot object-ஐ அணுக உதவும்.
-    global application 
-    application = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    # ஆரம்ப திரைப்படத் தரவை ஏற்றவும்.
-    await load_movies_data()
+    app.add_handler(CommandHandler("start", start_with_payload))
+    app.add_handler(CommandHandler("totalusers", total_users_command))
+    app.add_handler(CommandHandler("addmovie", addmovie))
+    app.add_handler(CommandHandler("deletemovie", deletemovie))
+    app.add_handler(CommandHandler("edittitle", edittitle))
+    app.add_handler(CommandHandler("movielist", movielist))
+    app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("adminpanel", admin_panel))
+    app.add_handler(CommandHandler("addadmin", add_admin))
+    app.add_handler(CommandHandler("removeadmin", remove_admin))
+    app.add_handler(CommandHandler("restart", restart_bot))
 
-    # Command handlers
-    application.add_handler(CommandHandler("start", start_with_payload))
-    application.add_handler(CommandHandler("totalusers", total_users_command))
-    application.add_handler(CommandHandler("addmovie", addmovie))
-    application.add_handler(CommandHandler("deletemovie", deletemovie))
-    application.add_handler(CommandHandler("edittitle", edittitle))
-    application.add_handler(CommandHandler("movielist", movielist))
-    application.add_handler(CommandHandler("status", status_command))
-    application.add_handler(CommandHandler("adminpanel", admin_panel))
-    application.add_handler(CommandHandler("addadmin", add_admin))
-    application.add_handler(CommandHandler("removeadmin", remove_admin))
-    application.add_handler(CommandHandler("restart", restart_bot))
+    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
 
-    # அனைத்து மெசேஜ் நிகழ்வுகளையும் பதிவு செய்யும் பொதுவான மெசேஜ் டிராக்கர்.
-    application.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
-    # --- இங்கேதான் மாற்றம் செய்யப்பட்டுள்ளது ---
-    # புகைப்படங்கள், வீடியோக்கள் மற்றும் ஆவணக் கோப்புகள் அனைத்தையும் save_file கையாளும்.
-    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, save_file))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
-
-    # Callback handlers (பட்டன் கிளிக் நிகழ்வுகளைக் கையாள)
-    application.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
-    application.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
-    application.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
+    # Callback handlers
+    app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
+    app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
+    app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
     
-    # சந்தா சரிபார்ப்பு "மீண்டும் முயற்சிக்கவும்" பட்டனைக் கையாளும் Handler.
-    application.add_handler(CallbackQueryHandler(handle_try_again_click, pattern=r'^tryagain\|'))
+    # --- புதிய Handler-ஐ இங்கே சேர்க்கவும் ---
+    app.add_handler(CallbackQueryHandler(handle_try_again_click, pattern=r'^tryagain\|'))
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
-    # டெலிகிராம் API-இலிருந்து புதுப்பித்தல்களைப் பெற பாட்டை இயக்கும்.
-    # allowed_updates=Update.ALL_TYPES என்பது அனைத்து வகை புதுப்பித்தல்களையும் பெற உதவும்.
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    await app.run_polling()
     
 if __name__ == "__main__":
     asyncio.run(main())
