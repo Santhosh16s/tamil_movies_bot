@@ -787,40 +787,6 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
-    
-# --- /reply command ---
-@restricted
-async def custom_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Administrator-களுக்கு ஒரு பயனரின் மெசேஜுக்குப் பதிலளிக்க அனுமதிக்கிறது,
-    அது bot-இன் கணக்கிலிருந்து அனுப்பப்படும்.
-    """
-    # பயனர் ஒரு குறிப்பிட்ட மெசேஜுக்குப் பதிலளித்தாரா என்பதை சரிபார்க்கவும்
-    if update.message.reply_to_message is None:
-        await update.message.reply_text("❌ இந்த கமெண்ட்டைப் பயன்படுத்த, நீங்கள் ஒரு மெசேஜுக்குப் பதிலளிக்க (reply) வேண்டும்.", parse_mode="Markdown")
-        return
-
-    # /reply கமெண்டுடன் பயனரால் அனுப்பப்பட்ட மெசேஜை பிரித்தெடுக்கவும்
-    reply_text = " ".join(context.args)
-    if not reply_text:
-        await update.message.reply_text("❌ நீங்கள் அனுப்ப வேண்டிய மெசேஜை உள்ளிடவும். \n\nஉதாரணம்: `/reply உங்கள் கேள்விக்கு இதுதான் பதில்`", parse_mode="Markdown")
-        return
-
-    try:
-        # நீங்கள் பதிலளித்த மெசேஜுக்குப் பதிலளிக்கவும்
-        await update.message.reply_to_message.reply_text(
-            reply_text,
-            parse_mode="Markdown" # தேவையானால், Markdown-ஐப் பயன்படுத்தலாம்
-        )
-        
-        # Admin-இன் மெசேஜை நீக்கலாம், இதனால் அது குழப்பத்தை ஏற்படுத்தாது.
-        await update.message.delete()
-        logging.info(f"✅ Administrator {update.message.from_user.id} ஒரு தனிப்பயன் பதிலை அனுப்பினார்.")
-
-    except Exception as e:
-        logging.error(f"❌ தனிப்பயன் பதிலை அனுப்ப முடியவில்லை: {e}")
-        await update.message.reply_text("❌ பதிலை அனுப்ப முடியவில்லை. மீண்டும் முயற்சிக்கவும்.", parse_mode="Markdown")
-
 
 # --- /restart command ---
 @restricted
@@ -899,7 +865,6 @@ async def main():
     app.add_handler(CommandHandler("adminpanel", admin_panel))
     app.add_handler(CommandHandler("addadmin", add_admin))
     app.add_handler(CommandHandler("removeadmin", remove_admin))
-    app.add_handler(CommandHandler("reply", custom_reply))
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
