@@ -899,6 +899,7 @@ async def main():
     app.add_handler(CommandHandler("adminpanel", admin_panel))
     app.add_handler(CommandHandler("addadmin", add_admin))
     app.add_handler(CommandHandler("removeadmin", remove_admin))
+    app.add_handler(CommandHandler("reply", custom_reply))
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
