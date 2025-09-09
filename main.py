@@ -787,42 +787,6 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
-    
-# --- /sendto command ---
-@restricted
-async def send_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Administrator-களுக்கு ஒரு குறிப்பிட்ட பயனருக்கு நேரடி மெசேஜை அனுப்ப அனுமதிக்கிறது.
-    """
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text("⚠️ பயன்பாடு: `/sendto <username/user_id> <message>`", parse_mode="Markdown")
-        return
-
-    # முதல் வாதத்தை பெறுங்கள் (user ID அல்லது username)
-    user_identifier = args[0]
-    # மீதமுள்ள வாதங்களை மெசேஜாக இணைக்கவும்
-    message_to_send = " ".join(args[1:])
-
-    try:
-        if user_identifier.startswith('@'):
-            # இது ஒரு username
-            target_id = user_identifier
-        else:
-            # இது ஒரு user ID
-            target_id = int(user_identifier)
-
-        await context.bot.send_message(
-            chat_id=target_id,
-            text=message_to_send,
-            parse_mode="Markdown"
-        )
-        await update.message.reply_text("✅ மெசேஜ் வெற்றிகரமாக அனுப்பப்பட்டது.", parse_mode="Markdown")
-        logging.info(f"✅ Administrator {update.message.from_user.id} ஒரு தனிப்பயன் மெசேஜை {target_id} க்கு அனுப்பினார்.")
-
-    except Exception as e:
-        logging.error(f"❌ பயனருக்கு மெசேஜ் அனுப்ப முடியவில்லை: {e}")
-        await update.message.reply_text("❌ மெசேஜ் அனுப்ப முடியவில்லை. Username அல்லது User ID சரியானதா என்று சரிபார்க்கவும்.", parse_mode="Markdown")
 
 # --- /restart command ---
 @restricted
@@ -901,7 +865,6 @@ async def main():
     app.add_handler(CommandHandler("adminpanel", admin_panel))
     app.add_handler(CommandHandler("addadmin", add_admin))
     app.add_handler(CommandHandler("removeadmin", remove_admin))
-    app.add_handler(CommandHandler("sendto", send_to_user))
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
