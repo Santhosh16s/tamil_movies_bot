@@ -790,56 +790,79 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.message.edit_text(text, reply_markup=reply_markup)
     
 #post Command Handler
+import asyncio
+
+user_post_mode = {}
+user_timers = {}
+
 async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id not in admin_ids:
         await update.message.reply_text("❌ இந்த command admins மட்டும் பயன்படுத்த முடியும்.")
         return
-    
-    if not context.args:
-        await update.message.reply_text("⚠️ Usage: /post <message>")
-        return
 
-    chat_id = GROUP_ID  # .env-ல இருந்து வாங்கிய group ID
-    msg = update.message
+    user_post_mode[user_id] = True
+    await update.message.reply_text("✅ போஸ்ட் mode-ல் உள்ளீர்கள். 30s inactivity-க்கு பிறகு auto exit ஆகும்.")
 
-    # Text
-    if msg.text:
-        text = msg.text.split(" ", 1)
-        if len(text) > 1:
-            await context.bot.send_message(chat_id=chat_id, text=text[1])
+    # Start/reset timeout task
+    if user_id in user_timers:
+        user_timers[user_id].cancel()  # cancel existing timer
 
-    # Photo
-    if msg.photo:
-        await context.bot.send_photo(chat_id=chat_id, photo=msg.photo[-1].file_id, caption=msg.caption)
+    user_timers[user_id] = asyncio.create_task(post_mode_timeout(user_id, context))
 
-    # Video
-    if msg.video:
-        await context.bot.send_video(chat_id=chat_id, video=msg.video.file_id, caption=msg.caption)
+async def post_mode_timeout(user_id, context, timeout=30):
+    try:
+        await asyncio.sleep(timeout)
+        # Timeout expired, remove user from post_mode
+        if user_post_mode.get(user_id):
+            user_post_mode.pop(user_id)
+            await context.bot.send_message(chat_id=user_id, text="⏰ 30 வினாடி inactivity-க்கு பிறகு போஸ்ட் mode நிறுத்தப்பட்டது.")
+    except asyncio.CancelledError:
+        # Timer was reset/cancelled due to user activity
+        pass
 
-    # Audio
-    if msg.audio:
-        await context.bot.send_audio(chat_id=chat_id, audio=msg.audio.file_id, caption=msg.caption)
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
 
-    # Document
-    if msg.document:
-        await context.bot.send_document(chat_id=chat_id, document=msg.document.file_id, caption=msg.caption)
+    if user_post_mode.get(user_id):
+        chat_id = GROUP_ID
+        msg = update.message
 
-    # Poll
-    if msg.poll:
-        await context.bot.send_poll(
-            chat_id=chat_id,
-            question=msg.poll.question,
-            options=[o.text for o in msg.poll.options],
-            is_anonymous=msg.poll.is_anonymous,
-            allows_multiple_answers=msg.poll.allows_multiple_answers
-        )
+        # Reset timeout timer on each message
+        if user_id in user_timers:
+            user_timers[user_id].cancel()
+        user_timers[user_id] = asyncio.create_task(post_mode_timeout(user_id, context))
 
-    # Location
-    if msg.location:
-        await context.bot.send_location(chat_id=chat_id, latitude=msg.location.latitude, longitude=msg.location.longitude)
+        # Forward messages as before
+        if msg.text:
+            await context.bot.send_message(chat_id=chat_id, text=msg.text)
 
-    await update.message.reply_text("✅ Content group-க்கு அனுப்பப்பட்டது.")
+        elif msg.photo:
+            await context.bot.send_photo(chat_id=chat_id, photo=msg.photo[-1].file_id, caption=msg.caption)
+
+        elif msg.video:
+            await context.bot.send_video(chat_id=chat_id, video=msg.video.file_id, caption=msg.caption)
+
+        elif msg.audio:
+            await context.bot.send_audio(chat_id=chat_id, audio=msg.audio.file_id, caption=msg.caption)
+
+        elif msg.document:
+            await context.bot.send_document(chat_id=chat_id, document=msg.document.file_id, caption=msg.caption)
+
+        elif msg.poll:
+            await context.bot.send_poll(
+                chat_id=chat_id,
+                question=msg.poll.question,
+                options=[o.text for o in msg.poll.options],
+                is_anonymous=msg.poll.is_anonymous,
+                allows_multiple_answers=msg.poll.allows_multiple_answers
+            )
+
+        elif msg.location:
+            await context.bot.send_location(chat_id=chat_id, latitude=msg.location.latitude, longitude=msg.location.longitude)
+
+        await update.message.reply_text("✅ Content group-க்கு அனுப்பப்பட்டது.")
+
 
 
 # --- /restart command ---
