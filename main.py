@@ -789,19 +789,56 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
     
-async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+#post Command Handler
+async def post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    # Check if user is admin
     if user_id not in admin_ids:
-        await update.message.reply_text("❌ Access denied")
+        await update.message.reply_text("❌ இந்த command admins மட்டும் பயன்படுத்த முடியும்.")
         return
 
-    if not context.args:
-        await update.message.reply_text("⚠️ Usage: /post <message>")
-        return
+    chat_id = GROUP_ID  # .env-ல set பண்ணிய group ID
 
-    message_text = " ".join(context.args)
-    await context.bot.send_message(chat_id=GROUP_ID, text=message_text)
-    await update.message.reply_text("✅ Message sent to group!")
+    msg = update.message
+    text = msg.text.split(" ", 1)
+    
+    # Text message
+    if len(text) > 1:
+        await context.bot.send_message(chat_id=chat_id, text=text[1])
+    
+    # Photo
+    if msg.photo:
+        await context.bot.send_photo(chat_id=chat_id, photo=msg.photo[-1].file_id, caption=msg.caption)
+    
+    # Video
+    if msg.video:
+        await context.bot.send_video(chat_id=chat_id, video=msg.video.file_id, caption=msg.caption)
+    
+    # Audio
+    if msg.audio:
+        await context.bot.send_audio(chat_id=chat_id, audio=msg.audio.file_id, caption=msg.caption)
+    
+    # Document
+    if msg.document:
+        await context.bot.send_document(chat_id=chat_id, document=msg.document.file_id, caption=msg.caption)
+    
+    # Poll
+    if msg.poll:
+        await context.bot.send_poll(
+            chat_id=chat_id,
+            question=msg.poll.question,
+            options=[o.text for o in msg.poll.options],
+            is_anonymous=msg.poll.is_anonymous,
+            allows_multiple_answers=msg.poll.allows_multiple_answers
+        )
+    
+    # Location
+    if msg.location:
+        await context.bot.send_location(chat_id=chat_id, latitude=msg.location.latitude, longitude=msg.location.longitude)
+
+    await update.message.reply_text("✅ Content group-க்கு அனுப்பப்பட்டது.")
+
 
 # --- /restart command ---
 @restricted
