@@ -7,6 +7,7 @@ import sys
 import os
 import time
 import telegram
+from pyrogram import Client as PyroClient
 from rapidfuzz import process
 from dotenv import load_dotenv
 from functools import wraps
@@ -36,6 +37,13 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 MOVIE_UPDATE_CHANNEL_ID = int(os.getenv("MOVIE_UPDATE_CHANNEL_ID"))
 MOVIE_UPDATE_CHANNEL_URL = PRIVATE_CHANNEL_LINK # இது ஒரே சேனல் என்பதால், இதை மீண்டும் பயன்படுத்தலாம்.
+
+# 🔹 Pyrogram bot environment variables
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+GROUP_ID = int(os.getenv("GROUP_ID"))
+OWNER_ID = int(os.getenv("OWNER_ID"))
+from pyrogram import Client as PyroClient, filters as pyro_filters
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -753,6 +761,28 @@ async def movielist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await update.message.reply_text(text, reply_markup=reply_markup)
+    
+pyro_app = PyroClient("post_bot", api_id=API_ID, api_hash=API_HASH, bot_token=TOKEN)
+@pyro_app.on_message(pyro_filters.private & pyro_filters.user(OWNER_ID) & pyro_filters.command("post"))
+async def post_to_group(client, message):
+    text_to_send = message.text.split(None, 1) if message.text else None
+    caption = text_to_send[1] if text_to_send and len(text_to_send) > 1 else ""
+
+    if message.photo:
+        await client.send_photo(GROUP_ID, photo=message.photo.file_id, caption=caption)
+    elif message.document:
+        await client.send_document(GROUP_ID, document=message.document.file_id, caption=caption)
+    elif message.video:
+        await client.send_video(GROUP_ID, video=message.video.file_id, caption=caption)
+    elif message.audio:
+        await client.send_audio(GROUP_ID, audio=message.audio.file_id, caption=caption)
+    elif message.text and caption:
+        await client.send_message(GROUP_ID, caption)
+    else:
+        await message.reply("⚠️ தயவு செய்து /post <message> என்று msg அனுப்பவும்.")
+        return
+
+    await message.reply("✅ உங்கள் செய்தி group-க்கு அனுப்பப்பட்டது!")
 
 # movielist pagination callback
 async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
