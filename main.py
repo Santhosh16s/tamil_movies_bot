@@ -950,16 +950,15 @@ async def main():
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
-    # Callback handlers
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
     app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
-    
-    # --- புதிய Handler-ஐ இங்கே சேர்க்கவும் ---
+
     app.add_handler(CallbackQueryHandler(handle_try_again_click, pattern=r'^tryagain\|'))
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
-    
+
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
