@@ -34,6 +34,7 @@ admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
 PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GROUP_ID = int(os.getenv("GROUP_ID"))
 MOVIE_UPDATE_CHANNEL_ID = int(os.getenv("MOVIE_UPDATE_CHANNEL_ID"))
 MOVIE_UPDATE_CHANNEL_URL = PRIVATE_CHANNEL_LINK # இது ஒரே சேனல் என்பதால், இதை மீண்டும் பயன்படுத்தலாம்.
 
@@ -787,6 +788,20 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
+    
+async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in admin_ids:
+        await update.message.reply_text("❌ Access denied")
+        return
+
+    if not context.args:
+        await update.message.reply_text("⚠️ Usage: /post <message>")
+        return
+
+    message_text = " ".join(context.args)
+    await context.bot.send_message(chat_id=GROUP_ID, text=message_text)
+    await update.message.reply_text("✅ Message sent to group!")
 
 # --- /restart command ---
 @restricted
@@ -858,6 +873,7 @@ async def main():
     app.add_handler(CommandHandler("start", start_with_payload))
     app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
+    app.add_handler(CommandHandler("post", post_command))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
     app.add_handler(CommandHandler("movielist", movielist))
