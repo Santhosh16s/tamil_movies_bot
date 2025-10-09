@@ -29,8 +29,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 TOKEN = os.getenv("TOKEN")
 admin_ids_str = os.getenv("ADMIN_IDS", "")
 admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
-user_post_mode = {}
-user_timers = {}
 
 # --- .env-இலிருந்து நேரடியாகப் படிக்கப்படுகிறது ---
 PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
@@ -791,37 +789,12 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
     
-#post
+
+user_post_mode = {}
+user_timers = {}
+
 async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-
-    # If message has arguments, it's a reply mode (Part B)
-    if context.args and len(context.args) >= 2:
-        link = context.args[0]
-        reply_text = " ".join(context.args[1:])
-
-        # Link pattern: https://t.me/username/message_id
-        match = re.match(r"https://t.me/(\w+)/(\d+)", link)
-        if not match:
-            await update.message.reply_text("Invalid link format!")
-            return
-
-        username = match.group(1)
-        msg_id = int(match.group(2))
-
-        try:
-            # Reply to specific message
-            await context.bot.send_message(
-                chat_id=f"@{username}",
-                text=reply_text,
-                reply_to_message_id=msg_id
-            )
-            await update.message.reply_text("✅ Replied successfully!")
-        except Exception as e:
-            await update.message.reply_text(f"❌ Failed: {e}")
-        return
-
-    # Else, it's post mode (Part A)
     if user_id not in admin_ids:
         await update.message.reply_text("❌ இந்த command admins மட்டும் பயன்படுத்த முடியும்.")
         return
@@ -831,20 +804,20 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Start/reset timeout task
     if user_id in user_timers:
-        user_timers[user_id].cancel()
+        user_timers[user_id].cancel()  # cancel existing timer
 
     user_timers[user_id] = asyncio.create_task(post_mode_timeout(user_id, context))
-
 
 async def post_mode_timeout(user_id, context, timeout=30):
     try:
         await asyncio.sleep(timeout)
+        # Timeout expired, remove user from post_mode
         if user_post_mode.get(user_id):
             user_post_mode.pop(user_id)
             await context.bot.send_message(chat_id=user_id, text="⏰ 30 வினாடி inactivity-க்கு பிறகு போஸ்ட் mode நிறுத்தப்பட்டது.")
     except asyncio.CancelledError:
+        # Timer was reset/cancelled due to user activity
         pass
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -853,11 +826,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = GROUP_ID
         msg = update.message
 
-        # Reset timeout
+        # Reset timeout timer on each message
         if user_id in user_timers:
             user_timers[user_id].cancel()
         user_timers[user_id] = asyncio.create_task(post_mode_timeout(user_id, context))
 
+        # Forward messages as before
         if msg.text:
             await context.bot.send_message(chat_id=chat_id, text=msg.text)
 
