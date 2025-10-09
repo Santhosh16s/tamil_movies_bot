@@ -941,7 +941,7 @@ async def main():
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
-    app.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
+    
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
