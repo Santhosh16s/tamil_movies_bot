@@ -34,6 +34,7 @@ admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
 PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GROUP_ID = int(os.getenv("GROUP_ID"))
 MOVIE_UPDATE_CHANNEL_ID = int(os.getenv("MOVIE_UPDATE_CHANNEL_ID"))
 MOVIE_UPDATE_CHANNEL_URL = PRIVATE_CHANNEL_LINK # இது ஒரே சேனல் என்பதால், இதை மீண்டும் பயன்படுத்தலாம்.
 
@@ -788,6 +789,7 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
     
+#post Command Handler
 user_post_mode = {}
 user_timers = {}
 
@@ -800,21 +802,17 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_post_mode[user_id] = True
     await update.message.reply_text("✅ போஸ்ட் mode-ல் உள்ளீர்கள். 30s inactivity-க்கு பிறகு auto exit ஆகும்.")
 
-    # Start/reset timeout task
     if user_id in user_timers:
-        user_timers[user_id].cancel()  # cancel existing timer
-
+        user_timers[user_id].cancel()
     user_timers[user_id] = asyncio.create_task(post_mode_timeout(user_id, context))
 
 async def post_mode_timeout(user_id, context, timeout=30):
     try:
         await asyncio.sleep(timeout)
-        # Timeout expired, remove user from post_mode
         if user_post_mode.get(user_id):
             user_post_mode.pop(user_id)
             await context.bot.send_message(chat_id=user_id, text="⏰ 30 வினாடி inactivity-க்கு பிறகு போஸ்ட் mode நிறுத்தப்பட்டது.")
     except asyncio.CancelledError:
-        # Timer was reset/cancelled due to user activity
         pass
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -824,12 +822,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = GROUP_ID
         msg = update.message
 
-        # Reset timeout timer on each message
+        # Reset timer
         if user_id in user_timers:
             user_timers[user_id].cancel()
         user_timers[user_id] = asyncio.create_task(post_mode_timeout(user_id, context))
 
-        # Forward messages as before
         if msg.text:
             await context.bot.send_message(chat_id=chat_id, text=msg.text)
 
@@ -858,7 +855,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_location(chat_id=chat_id, latitude=msg.location.latitude, longitude=msg.location.longitude)
 
         await update.message.reply_text("✅ Content group-க்கு அனுப்பப்பட்டது.")
-        
+    else:
+        # போஸ்ட் mode இல்லாதவர்கள் messages handle பண்ணலாம்
+        pass
+
 # --- /restart command ---
 @restricted
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -929,6 +929,7 @@ async def main():
     app.add_handler(CommandHandler("start", start_with_payload))
     app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
+    app.add_handler(CommandHandler("post", post_command))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
     app.add_handler(CommandHandler("movielist", movielist))
@@ -939,20 +940,20 @@ async def main():
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
-
+    app.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
+    
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
-    # Callback handlers
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
     app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
-    
-    # --- புதிய Handler-ஐ இங்கே சேர்க்கவும் ---
+
     app.add_handler(CallbackQueryHandler(handle_try_again_click, pattern=r'^tryagain\|'))
 
     logging.info("🚀 பாட் தொடங்குகிறது...")
     await app.run_polling()
-    
+
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())

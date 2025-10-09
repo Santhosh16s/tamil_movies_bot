@@ -858,7 +858,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_location(chat_id=chat_id, latitude=msg.location.latitude, longitude=msg.location.longitude)
 
         await update.message.reply_text("✅ Content group-க்கு அனுப்பப்பட்டது.")
-        
 # --- /restart command ---
 @restricted
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):

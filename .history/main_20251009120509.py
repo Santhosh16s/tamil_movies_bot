@@ -788,77 +788,51 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
     
-user_post_mode = {}
-user_timers = {}
-
-async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id not in admin_ids:
-        await update.message.reply_text("❌ இந்த command admins மட்டும் பயன்படுத்த முடியும்.")
+# --- /reply command (Updated for Forwarded Messages) ---
+@restricted
+async def custom_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Administrator-களுக்கு ஒரு பயனரின் மெசேஜுக்குப் பதிலளிக்க அனுமதிக்கிறது.
+    இது ஃபார்வர்ட் செய்யப்பட்ட மெசேஜுகளுக்கும் வேலை செய்யும்.
+    """
+    message = update.message
+    
+    # பயனர் ஒரு குறிப்பிட்ட மெசேஜுக்குப் பதிலளித்தாரா என்பதை சரிபார்க்கவும்
+    if message.reply_to_message is None:
+        await message.reply_text("❌ இந்த கமெண்ட்டைப் பயன்படுத்த, நீங்கள் ஒரு மெசேஜுக்குப் பதிலளிக்க (reply) வேண்டும்.", parse_mode="Markdown")
         return
 
-    user_post_mode[user_id] = True
-    await update.message.reply_text("✅ போஸ்ட் mode-ல் உள்ளீர்கள். 30s inactivity-க்கு பிறகு auto exit ஆகும்.")
+    # ஃபார்வர்ட் செய்யப்பட்ட மெசேஜைக் கையாளவும்
+    replied_message = message.reply_to_message
+    
+    # அசல் மெசேஜின் chat ID, message ID மற்றும் username-ஐக் கண்டறியவும்.
+    # இது ஃபார்வர்ட் செய்யப்பட்ட மெசேஜ் என்றால், from_chat மற்றும் forwarded_from_message_id போன்ற தகவல்கள் இருக்கும்.
+    target_chat_id = replied_message.forward_from_chat.id if replied_message.forward_from_chat else replied_message.chat.id
+    target_message_id = replied_message.forward_from_message_id if replied_message.forward_from_message_id else replied_message.message_id
+    
+    # /reply கமெண்டுடன் பயனரால் அனுப்பப்பட்ட மெசேஜை பிரித்தெடுக்கவும்
+    reply_text = " ".join(context.args)
+    if not reply_text:
+        await message.reply_text("❌ நீங்கள் அனுப்ப வேண்டிய மெசேஜை உள்ளிடவும். \n\nஉதாரணம்: `/reply உங்கள் கேள்விக்கு இதுதான் பதில்`", parse_mode="Markdown")
+        return
 
-    # Start/reset timeout task
-    if user_id in user_timers:
-        user_timers[user_id].cancel()  # cancel existing timer
-
-    user_timers[user_id] = asyncio.create_task(post_mode_timeout(user_id, context))
-
-async def post_mode_timeout(user_id, context, timeout=30):
     try:
-        await asyncio.sleep(timeout)
-        # Timeout expired, remove user from post_mode
-        if user_post_mode.get(user_id):
-            user_post_mode.pop(user_id)
-            await context.bot.send_message(chat_id=user_id, text="⏰ 30 வினாடி inactivity-க்கு பிறகு போஸ்ட் mode நிறுத்தப்பட்டது.")
-    except asyncio.CancelledError:
-        # Timer was reset/cancelled due to user activity
-        pass
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-
-    if user_post_mode.get(user_id):
-        chat_id = GROUP_ID
-        msg = update.message
-
-        # Reset timeout timer on each message
-        if user_id in user_timers:
-            user_timers[user_id].cancel()
-        user_timers[user_id] = asyncio.create_task(post_mode_timeout(user_id, context))
-
-        # Forward messages as before
-        if msg.text:
-            await context.bot.send_message(chat_id=chat_id, text=msg.text)
-
-        elif msg.photo:
-            await context.bot.send_photo(chat_id=chat_id, photo=msg.photo[-1].file_id, caption=msg.caption)
-
-        elif msg.video:
-            await context.bot.send_video(chat_id=chat_id, video=msg.video.file_id, caption=msg.caption)
-
-        elif msg.audio:
-            await context.bot.send_audio(chat_id=chat_id, audio=msg.audio.file_id, caption=msg.caption)
-
-        elif msg.document:
-            await context.bot.send_document(chat_id=chat_id, document=msg.document.file_id, caption=msg.caption)
-
-        elif msg.poll:
-            await context.bot.send_poll(
-                chat_id=chat_id,
-                question=msg.poll.question,
-                options=[o.text for o in msg.poll.options],
-                is_anonymous=msg.poll.is_anonymous,
-                allows_multiple_answers=msg.poll.allows_multiple_answers
-            )
-
-        elif msg.location:
-            await context.bot.send_location(chat_id=chat_id, latitude=msg.location.latitude, longitude=msg.location.longitude)
-
-        await update.message.reply_text("✅ Content group-க்கு அனுப்பப்பட்டது.")
+        # அசல் குரூப்பிற்குச் சென்று, அசல் மெசேஜுக்குப் பதிலளிக்கவும்
+        await context.bot.send_message(
+            chat_id=target_chat_id,
+            text=reply_text,
+            reply_to_message_id=target_message_id,
+            parse_mode="Markdown"
+        )
         
+        # Admin-இன் மெசேஜை நீக்கலாம், இதனால் அது குழப்பத்தை ஏற்படுத்தாது.
+        await message.delete()
+        logging.info(f"✅ Administrator {message.from_user.id} ஒரு தனிப்பயன் பதிலை அனுப்பினார்.")
+
+    except Exception as e:
+        logging.error(f"❌ ஃபார்வர்ட் செய்யப்பட்ட மெசேஜுக்கு பதிலளிக்க முடியவில்லை: {e}")
+        await message.reply_text("❌ பதிலை அனுப்ப முடியவில்லை. பாட் அசல் குரூப்பில் உள்ளதா மற்றும் அதற்கு அனுமதி உள்ளதா என்று சரிபார்க்கவும்.", parse_mode="Markdown")
+
 # --- /restart command ---
 @restricted
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -936,6 +910,7 @@ async def main():
     app.add_handler(CommandHandler("adminpanel", admin_panel))
     app.add_handler(CommandHandler("addadmin", add_admin))
     app.add_handler(CommandHandler("removeadmin", remove_admin))
+    app.add_handler(CommandHandler("reply", custom_reply))
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
