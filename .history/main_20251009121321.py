@@ -930,7 +930,6 @@ async def main():
     app.add_handler(CommandHandler("start", start_with_payload))
     app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
-    app.add_handler(CommandHandler("post", post_command))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
     app.add_handler(CommandHandler("movielist", movielist))
