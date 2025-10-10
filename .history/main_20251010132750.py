@@ -952,6 +952,7 @@ async def main():
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_to_group), -1)
 
+
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 

@@ -34,7 +34,7 @@ admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
 PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-FORWARD_GROUP_ID = int(os.getenv("FORWARD_GROUP_ID"))
+
 MOVIE_UPDATE_CHANNEL_ID = int(os.getenv("MOVIE_UPDATE_CHANNEL_ID"))
 MOVIE_UPDATE_CHANNEL_URL = PRIVATE_CHANNEL_LINK # இது ஒரே சேனல் என்பதால், இதை மீண்டும் பயன்படுத்தலாம்.
 
@@ -950,7 +950,9 @@ async def main():
     app.add_handler(CommandHandler("removeadmin", remove_admin))
     app.add_handler(CommandHandler("restart", restart_bot))
 
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_to_group), -1)
+    app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_to_group))
+
 
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
