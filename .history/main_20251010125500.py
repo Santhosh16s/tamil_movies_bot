@@ -809,6 +809,7 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     asyncio.create_task(expire_pending())
 
+
 # --- Forward messages/media to group ---
 async def forward_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id

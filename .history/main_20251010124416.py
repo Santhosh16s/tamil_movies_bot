@@ -788,28 +788,7 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
     
-# --- /post command ---
-pending_post = {}  # user_id -> True
-
-@restricted  # optional, admin மட்டும் அனுப்பலாம்
-async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    pending_post[user_id] = True
-    await update.message.reply_text("📤 அடுத்த message / media group-க்கு forward செய்யப்படும். (30 வினாடிகளில் expire)")
-
-    # 30 seconds பின் pending state நீக்கும் task
-    async def expire_pending():
-        await asyncio.sleep(30)
-        if pending_post.get(user_id):
-            pending_post.pop(user_id, None)
-            try:
-                await update.message.reply_text("⏰ /post காலாவதி ஆகிவிட்டது. மீண்டும் /post அனுப்பவும்.")
-            except:
-                pass
-
-    asyncio.create_task(expire_pending())
-
-# --- Forward messages/media to group ---
+#post
 async def forward_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     group_id = int(os.getenv("FORWARD_GROUP_ID"))
@@ -939,7 +918,6 @@ async def main():
     app.add_handler(CommandHandler("start", start_with_payload))
     app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
-    app.add_handler(CommandHandler("post", post_command))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
     app.add_handler(CommandHandler("movielist", movielist))

@@ -788,67 +788,51 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
     
-# --- /post command ---
-pending_post = {}  # user_id -> True
-
-@restricted  # optional, admin மட்டும் அனுப்பலாம்
-async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    pending_post[user_id] = True
-    await update.message.reply_text("📤 அடுத்த message / media group-க்கு forward செய்யப்படும். (30 வினாடிகளில் expire)")
-
-    # 30 seconds பின் pending state நீக்கும் task
-    async def expire_pending():
-        await asyncio.sleep(30)
-        if pending_post.get(user_id):
-            pending_post.pop(user_id, None)
-            try:
-                await update.message.reply_text("⏰ /post காலாவதி ஆகிவிட்டது. மீண்டும் /post அனுப்பவும்.")
-            except:
-                pass
-
-    asyncio.create_task(expire_pending())
-
-# --- Forward messages/media to group ---
+#post
 async def forward_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    """Private chat messages-ஐ group-க்கு forward செய்கிறது"""
+    chat_type = update.effective_chat.type
     group_id = int(os.getenv("FORWARD_GROUP_ID"))
 
-    # Check if user activated /post
-    if not pending_post.get(user_id):
-        return  # forward செய்ய வேண்டியதில்லை
+    # மட்டும் private chat-ல் செயல்பட
+    if chat_type != "private":
+        return
 
-    msg = update.message
     try:
         # Text
-        if msg.text:
-            await context.bot.send_message(chat_id=group_id, text=msg.text)
+        if update.message.text:
+            await context.bot.send_message(chat_id=group_id, text=update.message.text)
+        
         # Photo
-        elif msg.photo:
-            file_id = msg.photo[-1].file_id
-            caption = msg.caption if msg.caption else None
+        elif update.message.photo:
+            file_id = update.message.photo[-1].file_id
+            caption = update.message.caption if update.message.caption else None
             await context.bot.send_photo(chat_id=group_id, photo=file_id, caption=caption)
+        
         # Video
-        elif msg.video:
-            file_id = msg.video.file_id
-            caption = msg.caption if msg.caption else None
+        elif update.message.video:
+            file_id = update.message.video.file_id
+            caption = update.message.caption if update.message.caption else None
             await context.bot.send_video(chat_id=group_id, video=file_id, caption=caption)
-        # Document
-        elif msg.document:
-            file_id = msg.document.file_id
-            caption = msg.caption if msg.caption else None
-            await context.bot.send_document(chat_id=group_id, document=file_id, caption=caption)
+        
         # Audio / Voice
-        elif msg.audio:
-            file_id = msg.audio.file_id
-            caption = msg.caption if msg.caption else None
+        elif update.message.audio:
+            file_id = update.message.audio.file_id
+            caption = update.message.caption if update.message.caption else None
             await context.bot.send_audio(chat_id=group_id, audio=file_id, caption=caption)
-        elif msg.voice:
-            file_id = msg.voice.file_id
+        elif update.message.voice:
+            file_id = update.message.voice.file_id
             await context.bot.send_voice(chat_id=group_id, voice=file_id)
+        
+        # Document
+        elif update.message.document:
+            file_id = update.message.document.file_id
+            caption = update.message.caption if update.message.caption else None
+            await context.bot.send_document(chat_id=group_id, document=file_id, caption=caption)
+        
         # Poll
-        elif msg.poll:
-            poll = msg.poll
+        elif update.message.poll:
+            poll = update.message.poll
             await context.bot.send_poll(
                 chat_id=group_id,
                 question=poll.question,
@@ -856,18 +840,15 @@ async def forward_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 is_anonymous=poll.is_anonymous,
                 allows_multiple_answers=poll.allows_multiple_answers,
             )
-        else:
-            await msg.reply_text("⚠️ இந்த type message forward செய்ய முடியாது.")
 
-        await msg.reply_text("✅ Message successfully forwarded to group.")
+        else:
+            await update.message.reply_text("⚠️ இந்த type message-ஐ forward செய்ய முடியாது.")
+
+        await update.message.reply_text("✅ Message successfully forwarded to group.")
 
     except Exception as e:
         logging.error(f"❌ Forwarding failed: {e}")
-        await msg.reply_text("❌ Message forward செய்ய முடியவில்லை.")
-    
-    # Forward ஆனதும், pending state நீக்கவும்
-    pending_post.pop(user_id, None)
-
+        await update.message.reply_text("❌ Message forward செய்ய முடியவில்லை.")
 
 # --- /restart command ---
 @restricted
@@ -939,7 +920,6 @@ async def main():
     app.add_handler(CommandHandler("start", start_with_payload))
     app.add_handler(CommandHandler("totalusers", total_users_command))
     app.add_handler(CommandHandler("addmovie", addmovie))
-    app.add_handler(CommandHandler("post", post_command))
     app.add_handler(CommandHandler("deletemovie", deletemovie))
     app.add_handler(CommandHandler("edittitle", edittitle))
     app.add_handler(CommandHandler("movielist", movielist))
@@ -950,7 +930,7 @@ async def main():
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_to_group))
+    from telegram.ext import MessageHandler,app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_to_group))
 
 
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))

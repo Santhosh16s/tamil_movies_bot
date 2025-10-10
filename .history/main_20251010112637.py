@@ -34,6 +34,7 @@ admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
 PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GROUP_ID = int(os.getenv("GROUP_ID"))
 MOVIE_UPDATE_CHANNEL_ID = int(os.getenv("MOVIE_UPDATE_CHANNEL_ID"))
 MOVIE_UPDATE_CHANNEL_URL = PRIVATE_CHANNEL_LINK # இது ஒரே சேனல் என்பதால், இதை மீண்டும் பயன்படுத்தலாம்.
 
@@ -788,85 +789,55 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
     await query.message.edit_text(text, reply_markup=reply_markup)
     
-# --- /post command ---
-pending_post = {}  # user_id -> True
+#post Command Handler
+async def post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
 
-@restricted  # optional, admin மட்டும் அனுப்பலாம்
-async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    pending_post[user_id] = True
-    await update.message.reply_text("📤 அடுத்த message / media group-க்கு forward செய்யப்படும். (30 வினாடிகளில் expire)")
+    # Check if user is admin
+    if user_id not in admin_ids:
+        await update.message.reply_text("❌ இந்த command admins மட்டும் பயன்படுத்த முடியும்.")
+        return
 
-    # 30 seconds பின் pending state நீக்கும் task
-    async def expire_pending():
-        await asyncio.sleep(30)
-        if pending_post.get(user_id):
-            pending_post.pop(user_id, None)
-            try:
-                await update.message.reply_text("⏰ /post காலாவதி ஆகிவிட்டது. மீண்டும் /post அனுப்பவும்.")
-            except:
-                pass
-
-    asyncio.create_task(expire_pending())
-
-# --- Forward messages/media to group ---
-async def forward_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    group_id = int(os.getenv("FORWARD_GROUP_ID"))
-
-    # Check if user activated /post
-    if not pending_post.get(user_id):
-        return  # forward செய்ய வேண்டியதில்லை
+    chat_id = GROUP_ID  # .env-ல set பண்ணிய group ID
 
     msg = update.message
-    try:
-        # Text
-        if msg.text:
-            await context.bot.send_message(chat_id=group_id, text=msg.text)
-        # Photo
-        elif msg.photo:
-            file_id = msg.photo[-1].file_id
-            caption = msg.caption if msg.caption else None
-            await context.bot.send_photo(chat_id=group_id, photo=file_id, caption=caption)
-        # Video
-        elif msg.video:
-            file_id = msg.video.file_id
-            caption = msg.caption if msg.caption else None
-            await context.bot.send_video(chat_id=group_id, video=file_id, caption=caption)
-        # Document
-        elif msg.document:
-            file_id = msg.document.file_id
-            caption = msg.caption if msg.caption else None
-            await context.bot.send_document(chat_id=group_id, document=file_id, caption=caption)
-        # Audio / Voice
-        elif msg.audio:
-            file_id = msg.audio.file_id
-            caption = msg.caption if msg.caption else None
-            await context.bot.send_audio(chat_id=group_id, audio=file_id, caption=caption)
-        elif msg.voice:
-            file_id = msg.voice.file_id
-            await context.bot.send_voice(chat_id=group_id, voice=file_id)
-        # Poll
-        elif msg.poll:
-            poll = msg.poll
-            await context.bot.send_poll(
-                chat_id=group_id,
-                question=poll.question,
-                options=[o.text for o in poll.options],
-                is_anonymous=poll.is_anonymous,
-                allows_multiple_answers=poll.allows_multiple_answers,
-            )
-        else:
-            await msg.reply_text("⚠️ இந்த type message forward செய்ய முடியாது.")
-
-        await msg.reply_text("✅ Message successfully forwarded to group.")
-
-    except Exception as e:
-        logging.error(f"❌ Forwarding failed: {e}")
-        await msg.reply_text("❌ Message forward செய்ய முடியவில்லை.")
+    text = msg.text.split(" ", 1)
     
-    # Forward ஆனதும், pending state நீக்கவும்
-    pending_post.pop(user_id, None)
+    # Text message
+    if len(text) > 1:
+        await context.bot.send_message(chat_id=chat_id, text=text[1])
+    
+    # Photo
+    if msg.photo:
+        await context.bot.send_photo(chat_id=chat_id, photo=msg.photo[-1].file_id, caption=msg.caption)
+    
+    # Video
+    if msg.video:
+        await context.bot.send_video(chat_id=chat_id, video=msg.video.file_id, caption=msg.caption)
+    
+    # Audio
+    if msg.audio:
+        await context.bot.send_audio(chat_id=chat_id, audio=msg.audio.file_id, caption=msg.caption)
+    
+    # Document
+    if msg.document:
+        await context.bot.send_document(chat_id=chat_id, document=msg.document.file_id, caption=msg.caption)
+    
+    # Poll
+    if msg.poll:
+        await context.bot.send_poll(
+            chat_id=chat_id,
+            question=msg.poll.question,
+            options=[o.text for o in msg.poll.options],
+            is_anonymous=msg.poll.is_anonymous,
+            allows_multiple_answers=msg.poll.allows_multiple_answers
+        )
+    
+    # Location
+    if msg.location:
+        await context.bot.send_location(chat_id=chat_id, latitude=msg.location.latitude, longitude=msg.location.longitude)
+
+    await update.message.reply_text("✅ Content group-க்கு அனுப்பப்பட்டது.")
 
 
 # --- /restart command ---
@@ -950,8 +921,6 @@ async def main():
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL, general_message_tracker), -1)
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_to_group))
-
 
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
