@@ -6,6 +6,7 @@ import re
 import sys
 import os
 import time
+import threading
 import telegram
 from rapidfuzz import process
 from dotenv import load_dotenv
@@ -22,7 +23,6 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# --- Load environment ---
 load_dotenv()
 nest_asyncio.apply()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -35,8 +35,7 @@ admin_ids = set(map(int, filter(None, admin_ids_str.split(","))))
 PRIVATE_CHANNEL_LINK = os.getenv("PRIVATE_CHANNEL_LINK")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-SKMOVIES_GROUP_ID = int(os.getenv("SKMOVIES_GROUP_ID"))
-SKMOVIESDISCUSSION_GROUP_ID = int(os.getenv("SKMOVIESDISCUSSION_GROUP_ID"))
+FORWARD_GROUP_ID = int(os.getenv("FORWARD_GROUP_ID"))
 MOVIE_UPDATE_CHANNEL_ID = int(os.getenv("MOVIE_UPDATE_CHANNEL_ID"))
 MOVIE_UPDATE_CHANNEL_URL = PRIVATE_CHANNEL_LINK # இது ஒரே சேனல் என்பதால், இதை மீண்டும் பயன்படுத்தலாம்.
 
@@ -50,7 +49,6 @@ except Exception as e:
 
 user_files = {}
 pending_file_requests = {}
-pending_post = {}  # user_id -> {'message': Message, 'task': asyncio.Task}
 
 # --- Utility Functions ---
 def extract_title(filename: str) -> str:
@@ -793,75 +791,83 @@ async def movielist_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.message.edit_text(text, reply_markup=reply_markup)
     
 # --- /post command ---
-@restricted
+pending_post = {}  # user_id -> True
+
+@restricted  # optional, admin மட்டும் அனுப்பலாம்
 async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await update.message.reply_text("📤 30 வினாடிகளில் message அனுப்புங்கள்.")
-    
-    async def expire():
+    pending_post[user_id] = True
+    await update.message.reply_text("📤 அடுத்த message / media group-க்கு forward செய்யப்படும். (30 வினாடிகளில் expire)")
+
+    # 30 seconds பின் pending state நீக்கும் task
+    async def expire_pending():
         await asyncio.sleep(30)
         if pending_post.get(user_id):
             pending_post.pop(user_id, None)
             try:
-                await update.message.reply_text("⏰ /post காலாவதி. மீண்டும் /post அனுப்பவும்.")
-            except: pass
+                await update.message.reply_text("⏰ /post காலாவதி ஆகிவிட்டது. மீண்டும் /post அனுப்பவும்.")
+            except:
+                pass
 
-    pending_post[user_id] = {}
-    pending_post[user_id]['task'] = asyncio.create_task(expire())
+    asyncio.create_task(expire_pending())
 
+# --- Forward messages/media to group ---
 async def forward_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id not in pending_post:
-        return  # Not in /post mode
-    
+    group_id = int(os.getenv("FORWARD_GROUP_ID"))
+
+    # Check if user activated /post
+    if not pending_post.get(user_id):
+        return  # forward செய்ய வேண்டியதில்லை
+
     msg = update.message
-    keyboard = [
-        [
-            InlineKeyboardButton("SKmovies", callback_data=f"postgroup|SKmovies"),
-            InlineKeyboardButton("SKmoviesdiscussion", callback_data=f"postgroup|SKmoviesdiscussion"),
-            InlineKeyboardButton("Both", callback_data=f"postgroup|both"),
-        ]
-    ]
-    await msg.reply_text("📌 எந்த group-க்கு forward செய்ய விரும்புகிறீர்கள்?", reply_markup=InlineKeyboardMarkup(keyboard))
-    pending_post[user_id]['message'] = msg
+    try:
+        # Text
+        if msg.text:
+            await context.bot.send_message(chat_id=group_id, text=msg.text)
+        # Photo
+        elif msg.photo:
+            file_id = msg.photo[-1].file_id
+            caption = msg.caption if msg.caption else None
+            await context.bot.send_photo(chat_id=group_id, photo=file_id, caption=caption)
+        # Video
+        elif msg.video:
+            file_id = msg.video.file_id
+            caption = msg.caption if msg.caption else None
+            await context.bot.send_video(chat_id=group_id, video=file_id, caption=caption)
+        # Document
+        elif msg.document:
+            file_id = msg.document.file_id
+            caption = msg.caption if msg.caption else None
+            await context.bot.send_document(chat_id=group_id, document=file_id, caption=caption)
+        # Audio / Voice
+        elif msg.audio:
+            file_id = msg.audio.file_id
+            caption = msg.caption if msg.caption else None
+            await context.bot.send_audio(chat_id=group_id, audio=file_id, caption=caption)
+        elif msg.voice:
+            file_id = msg.voice.file_id
+            await context.bot.send_voice(chat_id=group_id, voice=file_id)
+        # Poll
+        elif msg.poll:
+            poll = msg.poll
+            await context.bot.send_poll(
+                chat_id=group_id,
+                question=poll.question,
+                options=[o.text for o in poll.options],
+                is_anonymous=poll.is_anonymous,
+                allows_multiple_answers=poll.allows_multiple_answers,
+            )
+        else:
+            await msg.reply_text("⚠️ இந்த type message forward செய்ய முடியாது.")
 
-async def handle_post_group_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    if user_id not in pending_post:
-        await query.message.reply_text("⏰ /post காலாவதி. மீண்டும் /post அனுப்பவும்.")
-        return
+        await msg.reply_text("✅ Message successfully forwarded to group.")
+
+    except Exception as e:
+        logging.error(f"❌ Forwarding failed: {e}")
+        await msg.reply_text("❌ Message forward செய்ய முடியவில்லை.")
     
-    choice = query.data.split('|')[1]
-    msg = pending_post[user_id]['message']
-    group_ids = []
-    if choice == "SKmovies":
-        group_ids = [SKMOVIES_GROUP_ID]
-    elif choice == "SKmoviesdiscussion":
-        group_ids = [SKMOVIESDISCUSSION_GROUP_ID]
-    elif choice == "both":
-        group_ids = [SKMOVIES_GROUP_ID, SKMOVIESDISCUSSION_GROUP_ID]
-
-    for gid in group_ids:
-        try:
-            if msg.text:
-                await context.bot.send_message(chat_id=gid, text=msg.text)
-            elif msg.photo:
-                await context.bot.send_photo(chat_id=gid, photo=msg.photo[-1].file_id, caption=msg.caption)
-            elif msg.video:
-                await context.bot.send_video(chat_id=gid, video=msg.video.file_id, caption=msg.caption)
-            elif msg.document:
-                await context.bot.send_document(chat_id=gid, document=msg.document.file_id, caption=msg.caption)
-            elif msg.audio:
-                await context.bot.send_audio(chat_id=gid, audio=msg.audio.file_id, caption=msg.caption)
-            elif msg.voice:
-                await context.bot.send_voice(chat_id=gid, voice=msg.voice.file_id)
-            await query.message.reply_text(f"✅ Forwarded to {gid}")
-        except Exception as e:
-            await query.message.reply_text(f"❌ Forward failed to {gid}: {e}")
-
-    # Clean up
+    # Forward ஆனதும், pending state நீக்கவும்
     pending_post.pop(user_id, None)
 
 
@@ -946,7 +952,7 @@ async def main():
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_to_group), -1)
-    
+
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
@@ -954,7 +960,6 @@ async def main():
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
     app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
-    app.add_handler(CallbackQueryHandler(handle_post_group_click, pattern=r'^postgroup\|'))
     
     # --- புதிய Handler-ஐ இங்கே சேர்க்கவும் ---
     app.add_handler(CallbackQueryHandler(handle_try_again_click, pattern=r'^tryagain\|'))

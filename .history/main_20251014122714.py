@@ -946,7 +946,7 @@ async def main():
     app.add_handler(CommandHandler("restart", restart_bot))
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, forward_to_group), -1)
-    
+     app.add_handler(CallbackQueryHandler(handle_post_group_click, pattern=r'^postgroup\|'))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, save_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_movie))
 
@@ -954,7 +954,6 @@ async def main():
     app.add_handler(CallbackQueryHandler(handle_resolution_click, pattern=r"^res\|"))
     app.add_handler(CallbackQueryHandler(movie_button_click, pattern=r"^movie\|"))
     app.add_handler(CallbackQueryHandler(movielist_callback, pattern=r"^movielist_"))
-    app.add_handler(CallbackQueryHandler(handle_post_group_click, pattern=r'^postgroup\|'))
     
     # --- புதிய Handler-ஐ இங்கே சேர்க்கவும் ---
     app.add_handler(CallbackQueryHandler(handle_try_again_click, pattern=r'^tryagain\|'))
