@@ -868,7 +868,7 @@ async def handle_post_group_click(update: Update, context: ContextTypes.DEFAULT_
 # --- /restart command ---
 @restricted
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Railway மூலம்)...")
+    await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (R மூலம்)...")
     sys.exit(0)
 
 # --- இங்குதான் முக்கிய மாற்றம் ---

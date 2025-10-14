@@ -830,7 +830,7 @@ async def handle_post_group_click(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     user_id = query.from_user.id
     if user_id not in pending_post:
-        await query.message.reply_text("⏰ நேரம் முடிந்துவிட்டது. செய்தி அனுப்ப /post ஐ மீண்டும் பயன்படுத்தவும்.")
+        await query.message.reply_text("⏰ /post காலாவதி. மீண்டும் /post அனுப்பவும்.")
         return
     
     choice = query.data.split('|')[1]
@@ -868,7 +868,7 @@ async def handle_post_group_click(update: Update, context: ContextTypes.DEFAULT_
 # --- /restart command ---
 @restricted
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Railway மூலம்)...")
+    await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Koyeb மூலம்)...")
     sys.exit(0)
 
 # --- இங்குதான் முக்கிய மாற்றம் ---
