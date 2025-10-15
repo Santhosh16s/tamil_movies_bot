@@ -7,7 +7,7 @@ import sys
 import os
 import time
 import telegram
-from rapidfuzz import process
+from rapidfuzz import process,
 from dotenv import load_dotenv
 from functools import wraps
 from supabase.client import create_client, Client
@@ -412,6 +412,7 @@ async def is_user_subscribed(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -
         logging.error(f"❌ பயனரின் சந்தாவை சரிபார்க்க பிழை: {e}")
         return False
 
+# --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
 # --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

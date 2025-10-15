@@ -413,6 +413,7 @@ async def is_user_subscribed(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -
         return False
 
 # --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
+# --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id

@@ -413,6 +413,7 @@ async def is_user_subscribed(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -
         return False
 
 # --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
+# --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -867,7 +868,7 @@ async def handle_post_group_click(update: Update, context: ContextTypes.DEFAULT_
 # --- /restart command ---
 @restricted
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Railway மூலம்)...")
+    await update.message.reply_text("♻️ பாட்டு மீண்டும் தொடங்குகிறது (Koyeb மூலம்)...")
     sys.exit(0)
 
 # --- இங்குதான் முக்கிய மாற்றம் ---

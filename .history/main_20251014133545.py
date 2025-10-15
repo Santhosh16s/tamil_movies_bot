@@ -1,3 +1,11 @@
+"""
+தமிழ் திரைப்பட பாட் - தொழில்முறை பதிப்பு
+Professional Tamil Movie Bot with Enterprise-Grade Architecture
+
+இந்த பாட் Telegram மூலம் தமிழ் திரைப்படங்களை வழங்குகிறது.
+Supabase database மற்றும் advanced fuzzy search-ஐ பயன்படுத்துகிறது.
+"""
+
 import logging
 import asyncio
 import nest_asyncio
@@ -22,6 +30,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
+#================================
 # --- Load environment ---
 load_dotenv()
 nest_asyncio.apply()
@@ -412,6 +421,7 @@ async def is_user_subscribed(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -
         logging.error(f"❌ பயனரின் சந்தாவை சரிபார்க்க பிழை: {e}")
         return False
 
+# --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
 # --- மாற்றப்பட்ட செயல்பாடு: handle_resolution_click ---
 async def handle_resolution_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

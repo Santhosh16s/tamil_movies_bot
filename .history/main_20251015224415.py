@@ -7,7 +7,7 @@ import sys
 import os
 import time
 import telegram
-from rapidfuzz import process
+from rapidfuzz import process,fuzz
 from dotenv import load_dotenv
 from functools import wraps
 from supabase.client import create_client, Client
