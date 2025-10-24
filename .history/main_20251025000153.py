@@ -86,6 +86,7 @@ def clean_title(title: str) -> str:
 
     return title
 
+
 def load_movies_data():
     try:
         response = supabase.table("movies").select("*").execute()
