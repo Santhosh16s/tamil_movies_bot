@@ -378,7 +378,7 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     good_matches = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=85)
 
     if not good_matches:
-        broad_suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=70)
+        broad_suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=60)
         if broad_suggestions:
             keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in broad_suggestions]
             await update.message.reply_text(
