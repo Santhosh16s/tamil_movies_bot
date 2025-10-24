@@ -375,39 +375,34 @@ async def send_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cleaned_search_query = clean_title(search_query)
     movie_titles = list(movies_data.keys())
 
-    # 🎯 முதலில் நல்ல match (80% மேல் மட்டும்)
-    good_matches = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=85)
+    good_matches = process.extract(cleaned_search_query, movie_titles, score_cutoff=80)
 
     if not good_matches:
-        # broad suggestions (60% மேல்) — spelling mistake இருந்தால் மட்டும்
-        broad_suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=70)
+        broad_suggestions = process.extract(cleaned_search_query, movie_titles, limit=5, score_cutoff=60)
         if broad_suggestions:
             keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in broad_suggestions]
             await update.message.reply_text(
-                "🤔 இதில ஏதாவது படம் நீங்க சொல்லலாமா?",
+                "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            await update.message.reply_text(
-                "❌ மன்னிக்கவும், அந்தப் படம் எங்கள் Database-இல் இல்லை.\n\n🎬 2025 தமிழ் திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு சந்தேகம் இருந்தால் கேளுங்கள் 👉 https://t.me/skmoviesdiscussion"
-            )
+            await update.message.reply_text("❌ மன்னிக்கவும், இந்தத் திரைப்படம் எங்கள் Database-இல் இல்லை\n\n🎬 2025 இல் வெளியான தமிழ் HD திரைப்படங்கள் மட்டுமே இங்கு கிடைக்கும்✨.\n\nஉங்களுக்கு எதுவும் சந்தேகங்கள் இருந்ததால் இந்த குழுவில் கேட்கலாம் https://t.me/skmoviesdiscussion")
     elif len(good_matches) == 1 and good_matches[0][1] >= 95:
         matched_title_key = good_matches[0][0]
-        logging.info(f"🎯 Direct exact match found: '{matched_title_key}'")
+        logging.info(f"Direct exact match found for search: '{matched_title_key}'")
         await send_movie_poster(update.message, matched_title_key, context)
     else:
-        # பல matches இருந்தால் user-க்கு options காட்ட
         keyboard = [[InlineKeyboardButton(m[0].title(), callback_data=f"movie|{m[0]}")] for m in good_matches]
         await update.message.reply_text(
             "⚠️ நீங்கள் இந்த படங்களில் ஏதாவது குறிப்பிடுகிறீர்களா?",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-
 # --- புதிய செயல்பாடு: பயனர் சந்தாவை சரிபார்க்கும் ---
 async def is_user_subscribed(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """
     பயனர் சேனலில் உள்ளாரா என சரிபார்க்கும் செயல்பாடு.
+
     """
     try:
         user_status = await context.bot.get_chat_member(
