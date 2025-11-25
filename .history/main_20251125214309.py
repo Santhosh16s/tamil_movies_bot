@@ -319,27 +319,14 @@ async def addmovie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Save incoming files (for addmovie process) ---
 async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    # ---- SAFE MESSAGE EXTRACT ----
-    message = update.effective_message
-    user = update.effective_user
-
-    if message is None or user is None:
-        return  # ignore non-user updates
-
-    user_id = user.id
+    message = update.message
+    user_id = message.from_user.id
     chat_id = message.chat.id
 
-    # ---- Addmovie not used check ----
-    if user_id not in user_files:
+    if user_id not in user_files or (user_files[user_id]["poster"] is None and not message.photo and not message.document):
         await message.reply_text("❗ முதலில் /addmovie அனுப்பவும்.")
         return
 
-    if user_files[user_id]["poster"] is None and not message.photo and not message.document:
-        await message.reply_text("❗ முதலில் Poster அல்லது Movie file அனுப்பவும்.")
-        return
-
-    # ---- Poster ----
     if message.photo:
         file_id = message.photo[-1].file_id
         user_files[user_id]["poster"] = file_id
@@ -347,9 +334,7 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
         return
 
-    # ---- Movie files ----
     if message.document:
-
         if len(user_files[user_id]["movies"]) >= 3:
             await message.reply_text("❗ மூன்று movie files ஏற்கனவே பெற்றுவிட்டேன்.")
             return
@@ -366,33 +351,25 @@ async def save_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎥 Movie file {len(user_files[user_id]['movies'])} received.\n📂 `{movie_file_name}`",
             parse_mode="Markdown"
         )
-
         asyncio.create_task(delete_after_delay(context, chat_id, message.message_id))
 
-    # ---- Save after 1 poster + 3 movie files ----
     if user_files[user_id]["poster"] and len(user_files[user_id]["movies"]) == 3:
-
         poster_id = user_files[user_id]["poster"]
         movies_list = user_files[user_id]["movies"]
-
-        telegram_file_ids_for_db = [m["file_id"] for m in movies_list]
-
+        
+        telegram_file_ids_for_db = [m["file_id"] for m in movies_list] 
+        
         raw_title = extract_title(movies_list[0]["file_name"])
         cleaned_title = clean_title(raw_title)
 
-        saved = save_movie_to_db(cleaned_title, poster_id, telegram_file_ids_for_db)
-
+        saved = save_movie_to_db(cleaned_title, poster_id, telegram_file_ids_for_db) 
         if saved:
             global movies_data
             movies_data = load_movies_data()
-            await message.reply_text(
-                f"✅ Movie saved as *{cleaned_title.title()}*.",
-                parse_mode="Markdown"
-            )
+            await message.reply_text(f"✅ Movie saved as *{cleaned_title.title()}*.", parse_mode="Markdown")
         else:
             await message.reply_text("❌ DB-ல் சேமிக்க முடியவில்லை.")
 
-        # Clear memory for next upload
         user_files[user_id] = {"poster": None, "movies": []}
 
 # --- Send movie on text message (search) ---
@@ -844,30 +821,20 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending_post[user_id]['task'] = asyncio.create_task(expire())
 
 async def forward_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg:
-        return
-
-    user_id = msg.from_user.id
-
+    user_id = update.effective_user.id
     if user_id not in pending_post:
-        return
-
-    pending_post[user_id]["message"] = msg  # save original message
-
+        return  # Not in /post mode
+    
+    msg = update.message
     keyboard = [
         [
-            InlineKeyboardButton("SKmovies", callback_data="postgroup|sk"),
-            InlineKeyboardButton("SKmoviesdiscussion", callback_data="postgroup|disc"),
-            InlineKeyboardButton("Both", callback_data="postgroup|both"),
+            InlineKeyboardButton("SKmovies", callback_data=f"postgroup|SKmovies"),
+            InlineKeyboardButton("SKmoviesdiscussion", callback_data=f"postgroup|SKmoviesdiscussion"),
+            InlineKeyboardButton("Both", callback_data=f"postgroup|both"),
         ]
     ]
-
-    await msg.reply_text(
-        "📌 எந்த group-க்கு forward செய்ய விரும்புகிறீர்கள்?",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
+    await msg.reply_text("📌 எந்த group-க்கு forward செய்ய விரும்புகிறீர்கள்?", reply_markup=InlineKeyboardMarkup(keyboard))
+    pending_post[user_id]['message'] = msg
 
 async def handle_post_group_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

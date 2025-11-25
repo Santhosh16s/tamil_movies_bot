@@ -844,30 +844,22 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending_post[user_id]['task'] = asyncio.create_task(expire())
 
 async def forward_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+   user = update.effective_user
+  if user is None:
+    return
+      user_id = user.id
+
+    
     msg = update.message
-    if not msg:
-        return
-
-    user_id = msg.from_user.id
-
-    if user_id not in pending_post:
-        return
-
-    pending_post[user_id]["message"] = msg  # save original message
-
     keyboard = [
         [
-            InlineKeyboardButton("SKmovies", callback_data="postgroup|sk"),
-            InlineKeyboardButton("SKmoviesdiscussion", callback_data="postgroup|disc"),
-            InlineKeyboardButton("Both", callback_data="postgroup|both"),
+            InlineKeyboardButton("SKmovies", callback_data=f"postgroup|SKmovies"),
+            InlineKeyboardButton("SKmoviesdiscussion", callback_data=f"postgroup|SKmoviesdiscussion"),
+            InlineKeyboardButton("Both", callback_data=f"postgroup|both"),
         ]
     ]
-
-    await msg.reply_text(
-        "📌 எந்த group-க்கு forward செய்ய விரும்புகிறீர்கள்?",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
+    await msg.reply_text("📌 எந்த group-க்கு forward செய்ய விரும்புகிறீர்கள்?", reply_markup=InlineKeyboardMarkup(keyboard))
+    pending_post[user_id]['message'] = msg
 
 async def handle_post_group_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
